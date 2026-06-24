@@ -62,6 +62,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createProblemDetail(ex, HttpStatus.CONFLICT, ERROR_COUPON_NOT_CUMULATIVE, TYPE_COUPON_NOT_CUMULATIVE);
     }
 
+    @ExceptionHandler(MissingResourceException.class)
+    public ProblemDetail handleMissingResource(MissingResourceException ex) {
+        return createProblemDetail(ex, HttpStatus.PARTIAL_CONTENT, ERROR_MISSING_RESOURCE, TYPE_MISSING_RESOURCE);
+    }
+
     // --- 2. OVERRIDE STANDARD METHOD (DTO VALIDATION) ---
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(

@@ -1,14 +1,14 @@
 package com.example.esercizi.exception;
 
 /**
- * Eccezione lanciata quando due utenti tentano di riscattare
- * contemporaneamente l'ultimo utilizzo rimasto di un coupon.
+ * Exception thrown when two users attempt to redeem the last remaining
+ * coupon usage concurrently.
  *
  * <p>
- * Questa situazione è gestita tramite Optimistic Locking di JPA:
- * il campo {@code @Version} nell'entità {@code Coupon} causa un
- * {@code OptimisticLockException} quando la versione letta in memoria
- * non corrisponde più a quella nel database.
+ * This scenario is managed via JPA Optimistic Locking:
+ * the {@code @Version} field in the {@code Coupon} entity triggers an
+ * {@code OptimisticLockException} when the version read in memory
+ * no longer matches the one in the database.
  * </p>
  */
 public class ConcurrentPromotionAccessException extends RuntimeException {

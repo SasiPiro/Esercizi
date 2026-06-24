@@ -1,7 +1,7 @@
 package com.example.esercizi.dto;
 
-public record CartItemDto(
+public record CartItemDTO(
         Long id,
-        ProductDto product,
+        ProductDTO product,
         Integer quantity) {
 }

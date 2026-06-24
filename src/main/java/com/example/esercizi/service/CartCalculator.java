@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 @Component
 public class CartCalculator {
     /**
-     * Calcola il totale del carrello senza applicare sconti.
+     * Calculates the total price of the cart without applying discounts.
      */
     public BigDecimal calculateTotal(Cart cart) {
         return cart.getItems().stream()

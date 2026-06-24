@@ -1,8 +1,8 @@
 package com.example.esercizi.exception;
 
 /**
- * Eccezione lanciata quando si tenta di applicare un coupon
- * mentre è già attiva una promozione incompatibile (es. Sconti Stagionali).
+ * Exception thrown when attempting to apply a coupon
+ * when an incompatible promotion is already active (e.g. Seasonal Discounts).
  */
 public class CouponNotCumulativeException extends RuntimeException {
     public CouponNotCumulativeException(String message) {

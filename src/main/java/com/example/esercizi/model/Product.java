@@ -10,8 +10,6 @@ import lombok.Setter;
 import java.math.BigDecimal;
 
 @Entity
-@Getter
-@Setter
 @Table(name = "product")
 public class Product {
 

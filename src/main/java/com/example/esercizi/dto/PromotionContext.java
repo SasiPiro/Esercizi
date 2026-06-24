@@ -6,4 +6,4 @@ import java.time.Instant;
 
 public record PromotionContext(Cart cart, Instant now, User user) {
 }
-// user da security context
+// user from security context

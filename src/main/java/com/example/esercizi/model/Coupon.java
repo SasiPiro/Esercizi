@@ -10,26 +10,20 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * Rappresenta un codice sconto (coupon) riscattabile dall'utente.
+ * Represents a discount code (coupon) redeemable by the user.
  *
  * <p>
- * Questa entità utilizza <strong>Optimistic Locking</strong> tramite il campo
- * {@code version}
- * annotato con {@link Version}. Quando due transazioni concorrenti tentano di
- * modificare
- * lo stesso record (es. incrementare {@code currentUsage}), JPA confronta il
- * valore di
- * {@code version} letto con quello attuale nel DB: se differiscono, la seconda
- * transazione
- * riceve un {@code OptimisticLockException}.
+ * This entity uses <strong>Optimistic Locking</strong> via the {@code version} field
+ * annotated with {@link Version}. When two concurrent transactions attempt to modify
+ * the same record (e.g., increment {@code currentUsage}), JPA compares the
+ * {@code version} value read in memory with the current one in the DB: if they differ, the second
+ * transaction receives an {@code OptimisticLockException}.
  * </p>
  *
  * <p>
- * Differenza rispetto alle promozioni automatiche ({@code PromotionStrategy}):
- * le strategy si attivano in base al contesto (utente VIP, data corrente),
- * mentre
- * un {@code Coupon} richiede un codice esplicito dall'utente e ha limiti di
- * utilizzo.
+ * Difference compared to automatic promotions ({@code PromotionStrategy}):
+ * strategies are activated based on context (VIP user, current date), while
+ * a {@code Coupon} requires an explicit code from the user and has usage limits.
  * </p>
  */
 @Entity
@@ -69,10 +63,10 @@ public class Coupon {
     private CouponStatus status;
 
     /**
-     * Campo di versione per Optimistic Locking.
-     * JPA incrementa automaticamente questo valore ad ogni UPDATE.
-     * Se due transazioni leggono la stessa versione e una aggiorna per prima,
-     * la seconda fallirà con {@code OptimisticLockException}.
+     * Version field for Optimistic Locking.
+     * JPA automatically increments this value on each UPDATE.
+     * If two transactions read the same version and one updates first,
+     * the second will fail with {@code OptimisticLockException}.
      */
     @Version
     private Long version;

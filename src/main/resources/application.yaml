@@ -18,6 +18,13 @@ spring:
     console:
       enabled: true
       path: /h2-console
+  threads:
+    virtual:
+      enabled: true
+
+jwt:
+  secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-production}
+  expiration: ${JWT_EXPIRATION:86400000}
 
 promotions:
   vip-discount: 0.10

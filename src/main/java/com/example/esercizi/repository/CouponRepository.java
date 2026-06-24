@@ -12,16 +12,16 @@ import java.util.Optional;
 public interface CouponRepository extends JpaRepository<Coupon, Long> {
 
     /**
-     * Recupera un coupon attivo tramite il suo codice univoco.
+     * Retrieves an active coupon by its unique code.
      */
     Optional<Coupon> findByCodeAndStatus(String code, Coupon.CouponStatus status);
 
     /**
-     * Trova tutte le promozioni ACTIVE che devono essere marcate EXPIRED.
-     * Condizioni: utilizzo massimo raggiunto OPPURE data di scadenza superata.
+     * Finds all ACTIVE promotions that need to be marked as EXPIRED.
+     * Conditions: maximum usage reached OR expiry date has passed.
      *
      * <p>
-     * Usata dallo Scheduled Job {@code PromotionExpiryJob} ogni 60 secondi.
+     * Used by the {@code PromotionExpiryJob} Scheduled Job every 60 seconds.
      * </p>
      */
     @Query("""

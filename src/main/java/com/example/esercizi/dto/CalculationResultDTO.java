@@ -4,13 +4,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 
-public record CalculationResultDto (BigDecimal initialPrice,
-                                    BigDecimal finalPrice,
-                                    BigDecimal totalDiscountAmount,
-                                    List<String> appliedStrategies,
-                                    String couponUsed
+public record CalculationResultDTO(BigDecimal initialPrice,
+                                   BigDecimal finalPrice,
+                                   BigDecimal totalDiscountAmount,
+                                   List<String> appliedStrategies,
+                                   String couponUsed
 ) {
-    // Metodo utility per calcolare la percentuale totale di risparmio
+    // Utility method to calculate the total savings percentage
     public double getDiscountPercentage() {
         if (initialPrice.compareTo(BigDecimal.ZERO) == 0) return 0;
         return totalDiscountAmount

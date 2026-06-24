@@ -2,7 +2,6 @@
 DROP TABLE IF EXISTS cart_ownership;
 DROP TABLE IF EXISTS cart_item;
 DROP TABLE IF EXISTS cart;
-DROP TABLE IF EXISTS session_app ;
 DROP TABLE IF EXISTS user_app ;
 DROP TABLE IF EXISTS coupon;
 DROP TABLE IF EXISTS product;
@@ -14,14 +13,35 @@ DROP TABLE IF EXISTS product;
 CREATE TABLE user_app (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
-    vip BOOLEAN NOT NULL DEFAULT FALSE
+    password VARCHAR(255),
+    vip BOOLEAN NOT NULL DEFAULT FALSE,
+    active BOOLEAN DEFAULT TRUE
 );
 
-CREATE TABLE session_app (
-    id VARCHAR(255) PRIMARY KEY,
-    created_at TIMESTAMP NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
-    active BOOLEAN NOT NULL DEFAULT TRUE
+CREATE TABLE roles (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description VARCHAR(255)
+);
+
+CREATE TABLE user_roles (
+    user_id BIGINT NOT NULL,
+    role_id BIGINT NOT NULL,
+
+    -- Composite primary key prevents duplicates (same role for same user)
+    PRIMARY KEY (user_id, role_id),
+
+    -- Constraint referencing the user table
+    CONSTRAINT fk_user_roles_user
+        FOREIGN KEY (user_id)
+        REFERENCES user_app(id)
+        ON DELETE CASCADE,
+
+    -- Constraint referencing the role table
+    CONSTRAINT fk_user_roles_role
+        FOREIGN KEY (role_id)
+        REFERENCES roles(id)
+        ON DELETE CASCADE
 );
 
 CREATE TABLE product (
@@ -45,7 +65,7 @@ CREATE TABLE cart_item (
     product_id BIGINT,
     quantity INTEGER NOT NULL,
 
-    CONSTRAINT fk_cart_item_cart FOREIGN KEY (cart_id) REFERENCES cart(id),
+    CONSTRAINT fk_cart_item_cart FOREIGN KEY (cart_id) REFERENCES cart(id) ON DELETE CASCADE,
     CONSTRAINT fk_cart_item_product FOREIGN KEY (product_id) REFERENCES product(id),
     CHECK (quantity >= 1)
 );
@@ -54,11 +74,9 @@ CREATE TABLE cart_ownership (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     cart_id BIGINT NOT NULL,
     user_id BIGINT,
-    session_id VARCHAR(255),
 
-    CONSTRAINT fk_ownership_cart FOREIGN KEY (cart_id) REFERENCES cart(id),
-    CONSTRAINT fk_ownership_user FOREIGN KEY (user_id) REFERENCES user_app(id),
-    CONSTRAINT fk_ownership_session FOREIGN KEY (session_id) REFERENCES session_app(id)
+    CONSTRAINT fk_ownership_cart FOREIGN KEY (cart_id) REFERENCES cart(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ownership_user FOREIGN KEY (user_id) REFERENCES user_app(id)
 );
 
 -- =============================================

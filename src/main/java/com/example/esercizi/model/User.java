@@ -2,7 +2,10 @@ package com.example.esercizi.model;
 
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 @Entity
 @Table(name="user_app")
@@ -15,15 +18,57 @@ public class User {
     @Column(nullable = false, length = 50, unique = true)
     private String username;
 
+    @Column(nullable = false, length = 100)
+    private String password;
+
     @Column(nullable = false)
     private boolean vip;
 
-    public User(){}
+    @Column(nullable = false)
+    private boolean active;
 
-    public User(Long id, String username) {
-        this.id = id;
-        this.username = username;
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "user_roles",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id")
+    )
+    private Set<Role> roles;
+
+    public User(){
+        this.active = true;
+        this.roles = new HashSet<>();
         this.vip = false;
+    }
+
+    public User(String username, String password) {
+        this();
+        this.username = username;
+        this.password = password;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public Set<Role> getRoles() {
+        return roles;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
+    public void setRoles(Set<Role> roles) {
+        this.roles = roles;
     }
 
     public boolean isVip() {
@@ -48,6 +93,14 @@ public class User {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public void addRole(Role role) {
+        this.roles.add(role);
+    }
+
+    public void removeRole(Role role) {
+        this.roles.remove(role);
     }
 
     @Override

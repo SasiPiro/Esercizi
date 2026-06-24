@@ -1,6 +1,7 @@
 package com.example.esercizi.service;
 
-import com.example.esercizi.dto.CartDto;
+import com.example.esercizi.dto.CartDTO;
+import com.example.esercizi.exception.MissingResourceException;
 import com.example.esercizi.mapper.CartMapper;
 import com.example.esercizi.model.*;
 import com.example.esercizi.repository.CartOwnershipRepository;
@@ -8,10 +9,14 @@ import com.example.esercizi.repository.CartRepository;
 import com.example.esercizi.repository.ProductRepository;
 import com.example.esercizi.exception.ProductNotFoundException;
 import com.example.esercizi.exception.UserNotFoundException;
-
+import com.example.esercizi.facade.AuthFacade;
+import com.example.esercizi.repository.UserRepository;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Objects;
 import java.util.Optional;
 import static com.example.esercizi.constants.AppConstants.ERROR_USER_NOT_FOUND;
 
@@ -23,13 +28,18 @@ public class CartService {
     private final CartOwnershipRepository ownershipRepository;
     private final ProductRepository productRepository;
     private final CartMapper cartMapper;
+    private final UserRepository userRepository;
+    private final AuthFacade authFacade;
 
     public CartService(CartRepository cartRepository, CartOwnershipRepository ownershipRepository,
-            ProductRepository productRepository, CartMapper cartMapper) {
+            ProductRepository productRepository, CartMapper cartMapper, UserRepository userRepository,
+            AuthFacade authFacade) {
         this.cartRepository = cartRepository;
         this.ownershipRepository = ownershipRepository;
         this.productRepository = productRepository;
         this.cartMapper = cartMapper;
+        this.userRepository = userRepository;
+        this.authFacade = authFacade;
     }
 
     /*
@@ -38,31 +48,37 @@ public class CartService {
      * =======================
      */
 
-    public CartDto getOrCreateCart(Session session, User user) {
-        Cart cart = getCartEntity(session, user);
-        return cartMapper.toDto(cart, user);
+    public CartDTO getOrCreateCart() {
+        String principal = authFacade.getCurrentUsername();
+        User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
+        String anonymousId = (user == null) ? principal : null;
+        Cart cart = getCartEntity(anonymousId, user);
+        return cartMapper.toDto(cart, user, anonymousId);
     }
 
-    public Cart getCartEntity(Session session, User user) {
+    public Cart getCartEntity(String anonymousId, User user) {
 
-        // USER LOGGATO
-        if (user != null) {
+        // LOGGED IN USER
+        if (user != null && user.getId() != null) {
             return ownershipRepository.findByUser(user)
                     .map(CartOwnership::getCart)
                     .orElseGet(() -> createUserCart(user));
         }
         // GUEST
-        return ownershipRepository.findBySession(session)
-                .map(CartOwnership::getCart)
-                .orElseGet(() -> createGuestCart(session));
+        if (anonymousId != null) {
+            return ownershipRepository.findByAnonymousId(anonymousId)
+                    .map(CartOwnership::getCart)
+                    .orElseGet(() -> createGuestCart(anonymousId));
+        }
+        throw new MissingResourceException("User or AnonymousId must be provided");
     }
 
-    private Cart createGuestCart(Session session) {
+    private Cart createGuestCart(String anonymousId) {
         Cart cart = cartRepository.save(new Cart());
 
         CartOwnership ownership = new CartOwnership();
         ownership.setCart(cart);
-        ownership.setSession(session);
+        ownership.setAnonymousId(anonymousId);
         ownershipRepository.save(ownership);
 
         return cart;
@@ -70,36 +86,44 @@ public class CartService {
 
     /*
      * =======================
-     * LOGIN / REGISTER FLOW
+     * LOGIN / REGISTER FLOW (MERGE)
      * =======================
      */
 
-    public Cart assignCartToUser(Session session, User user) {
+    public CartDTO mergeGuestCartIntoUserCart(String anonymousId) {
 
-        if (user == null) {
-            throw new UserNotFoundException(ERROR_USER_NOT_FOUND);
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String username = auth.getName();
+        User user = userRepository.findByUsernameWithRoles(username)
+                .orElseThrow(() -> new UserNotFoundException(ERROR_USER_NOT_FOUND));
+
+        Optional<CartOwnership> guestOwnershipOpt = ownershipRepository.findByAnonymousId(anonymousId);
+        Optional<CartOwnership> userOwnershipOpt = ownershipRepository.findByUser(user);
+
+        Cart resultCart;
+
+        if (guestOwnershipOpt.isPresent() && userOwnershipOpt.isPresent()) {
+            // Case 1: both carts exist → merge guest cart into user cart
+            resultCart = mergeCarts(guestOwnershipOpt.get(), userOwnershipOpt.get());
+
+        } else if (guestOwnershipOpt.isPresent()) {
+            // Case 2: only guest has a cart → reassign it to the user
+            CartOwnership guestOwnership = guestOwnershipOpt.get();
+            guestOwnership.setAnonymousId(null);
+            guestOwnership.setUser(user);
+            ownershipRepository.save(guestOwnership);
+            resultCart = guestOwnership.getCart();
+
+        } else if (userOwnershipOpt.isPresent()) {
+            // Case 3: only user has a cart → return it
+            resultCart = userOwnershipOpt.get().getCart();
+
+        } else {
+            // Case 4: no cart exists → create a new one for the user
+            resultCart = createUserCart(user);
         }
 
-        Optional<CartOwnership> guestOwnership = ownershipRepository.findBySession(session);
-
-        Optional<CartOwnership> userOwnership = ownershipRepository.findByUser(user);
-
-        if (guestOwnership.isPresent() && userOwnership.isPresent()) {
-            return mergeCarts(
-                    guestOwnership.get(),
-                    userOwnership.get());
-        }
-
-        if (guestOwnership.isPresent()) {
-            CartOwnership ownership = guestOwnership.get();
-            ownership.setUser(user);
-            ownership.setSession(null);
-            return ownership.getCart();
-        }
-
-        return userOwnership
-                .map(CartOwnership::getCart)
-                .orElseGet(() -> createUserCart(user));
+        return cartMapper.toDto(resultCart, user, null);
     }
 
     private Cart createUserCart(User user) {
@@ -144,8 +168,12 @@ public class CartService {
      * =======================
      */
 
-    public CartDto addItem(Session session, User user, String productCode, int quantity) {
-        Cart cart = getCartEntity(session, user);
+    public CartDTO addItem(String productCode, int quantity) {
+        String principal = authFacade.getCurrentUsername();
+        User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
+        String anonymousId = (user == null) ? principal : null;
+
+        Cart cart = getCartEntity(anonymousId, user);
 
         Product product = productRepository.findByCode(productCode)
                 .orElseThrow(() -> ProductNotFoundException.forCode(productCode));
@@ -165,15 +193,19 @@ public class CartService {
             cart.getItems().add(item);
         }
         Cart savedCart = cartRepository.save(cart);
-        return cartMapper.toDto(savedCart, user);
+        return cartMapper.toDto(savedCart, user, anonymousId);
     }
 
-    public CartDto removeItem(Session session, User user, String productCode) {
-        Cart cart = getCartEntity(session, user);
+    public CartDTO removeItem(String productCode) {
+        String principal = (String) Objects.requireNonNull(SecurityContextHolder.getContext().getAuthentication())
+                .getPrincipal();
+        User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
+        String anonymousId = (user == null) ? principal : null;
+        Cart cart = getCartEntity(anonymousId, user);
 
         cart.getItems().removeIf(item -> item.getProduct().getCode().equals(productCode));
 
         Cart savedCart = cartRepository.save(cart);
-        return cartMapper.toDto(savedCart, user);
+        return cartMapper.toDto(savedCart, user, anonymousId);
     }
 }

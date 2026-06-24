@@ -28,58 +28,53 @@ public class CouponService {
     }
 
     /**
-     * Riscatta un codice coupon e restituisce l'oggetto Promotion aggiornato.
+     * Redeems a coupon code and returns the updated Coupon object.
      *
      * <p>
-     * <strong>Flusso di concorrenza (Optimistic Locking):</strong>
+     * <strong>Concurrency Flow (Optimistic Locking):</strong>
      * </p>
      * <ol>
-     * <li>La transazione legge il record {@code Promotion} dal DB, incluso il campo
-     * {@code version}.</li>
-     * <li>Incrementa {@code currentUsage} in memoria.</li>
-     * <li>Chiama {@code saveAndFlush()} che forza immediatamente l'UPDATE sul DB.
-     * JPA genera:
-     * {@code UPDATE promotions SET ..., version = version + 1 WHERE id = ? AND version = ?}</li>
-     * <li>Se un'altra transazione ha già incrementato la versione, l'UPDATE
-     * modifica 0 righe
-     * e JPA lancia {@code OptimisticLockingFailureException}.</li>
-     * <li>L'eccezione viene catturata e convertita in
+     * <li>The transaction reads the {@code Coupon} record from the DB, including the {@code version} field.</li>
+     * <li>Increments {@code currentUsage} in memory.</li>
+     * <li>Calls {@code saveAndFlush()} which immediately forces the UPDATE on the DB.
+     * JPA generates:
+     * {@code UPDATE coupon SET ..., version = version + 1 WHERE id = ? AND version = ?}</li>
+     * <li>If another transaction has already incremented the version, the UPDATE
+     * modifies 0 rows
+     * and JPA throws {@code OptimisticLockingFailureException}.</li>
+     * <li>The exception is caught and converted into a
      * {@code ConcurrentPromotionAccessException},
-     * che il {@code GlobalExceptionHandler} traduce in HTTP 409 CONFLICT.</li>
+     * which the {@code GlobalExceptionHandler} translates to HTTP 409 CONFLICT.</li>
      * </ol>
      *
-     * @param couponCode codice coupon inserito dall'utente
-     * @return l'oggetto Promotion riscattato (con usage incrementato)
-     * @throws PromotionNotFoundException         se il codice non esiste o non è
-     *                                            ACTIVE
-     * @throws PromotionExpiredException          se il coupon è scaduto o ha
-     *                                            raggiunto il limite di utilizzi
-     * @throws ConcurrentPromotionAccessException se un altro utente ha riscattato
-     *                                            l'ultimo utilizzo
-     *                                            contemporaneamente
+     * @param couponCode coupon code entered by the user
+     * @return the redeemed Coupon object (with incremented usage)
+     * @throws PromotionNotFoundException         if the code does not exist or is not ACTIVE
+     * @throws PromotionExpiredException          if the coupon has expired or has reached its usage limit
+     * @throws ConcurrentPromotionAccessException if another user redeemed the last usage concurrently
      */
     @Transactional
     public Coupon redeemCoupon(String couponCode) {
 
-        // 1. Lookup: trova il coupon ACTIVE con il codice specificato
+        // 1. Lookup: find the ACTIVE coupon with the specified code
         Coupon promo = couponRepository
                 .findByCodeAndStatus(couponCode, CouponStatus.ACTIVE)
                 .orElseThrow(() -> new PromotionNotFoundException(ERROR_PROMOTION_NOT_FOUND));
 
-        // 2. Validazione temporale
+        // 2. Temporal validation
         if (promo.getExpiryDate().isBefore(timeService.now())) {
             throw new PromotionExpiredException(ERROR_PROMOTION_EXPIRED);
         }
 
-        // 3. Validazione limite utilizzi
+        // 3. Usage limit validation
         if (promo.getCurrentUsage() >= promo.getUsageLimit()) {
             throw new PromotionExpiredException(ERROR_PROMOTION_EXPIRED);
         }
 
-        // 4. Incremento usage (in memoria)
+        // 4. Usage increment (in memory)
         promo.setCurrentUsage(promo.getCurrentUsage() + 1);
 
-        // 5. Flush verso DB: qui scatta il check di @Version
+        // 5. Flush to DB: the @Version check triggers here
         try {
             couponRepository.saveAndFlush(promo);
         } catch (ObjectOptimisticLockingFailureException ex) {

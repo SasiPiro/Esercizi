@@ -7,9 +7,9 @@ import java.math.BigDecimal;
 public interface PromotionStrategy {
 
     /**
-     * Enum che definisce la tipologia di strategia.
-     * Utile per applicare regole di priorità (es. VIP sempre, STAGIONALE ha
-     * priorità su COUPON).
+     * Enum defining the type of strategy.
+     * Useful for applying priority rules (e.g. VIP is always active, SEASONAL has
+     * priority over COUPON).
      */
     enum StrategyType {
         VIP,
@@ -17,17 +17,17 @@ public interface PromotionStrategy {
     }
 
     /**
-     * Determina se questa promo è applicabile al contesto corrente.
+     * Determines if this promotion is applicable to the current context.
      */
     boolean supports(PromotionContext context);
 
     /**
-     * Restituisce la percentuale di sconto da applicare (es. 0.10 per 10%).
+     * Returns the discount percentage to apply (e.g. 0.10 for 10%).
      */
     BigDecimal getDiscountPercentage();
 
     /**
-     * Restituisce il tipo di strategia.
+     * Returns the strategy type.
      */
     StrategyType getType();
 }

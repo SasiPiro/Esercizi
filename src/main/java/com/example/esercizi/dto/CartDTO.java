@@ -2,8 +2,9 @@ package com.example.esercizi.dto;
 
 import java.util.List;
 
-public record CartDto(
+public record CartDTO(
                 Long id,
                 Long userId,
-                List<CartItemDto> items) {
+                String anonymousId,
+                List<CartItemDTO> items) {
 }

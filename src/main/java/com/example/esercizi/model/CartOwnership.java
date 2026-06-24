@@ -2,6 +2,8 @@ package com.example.esercizi.model;
 
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "cart_ownership")
 public class CartOwnership {
@@ -18,14 +20,18 @@ public class CartOwnership {
     @JoinColumn(name = "user_id")
     private User user; // nullable: guest
 
-    @OneToOne
-    private Session session; // per guest anonimi
+    @Column(name = "anonymous_id")
+    private String anonymousId; // UUID for anonymous guests via JWT
 
-    public CartOwnership(Long id, Cart cart, User user, Session session) {
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    public CartOwnership(Long id, Cart cart, User user, String anonymousId) {
         this.id = id;
         this.cart = cart;
         this.user = user;
-        this.session = session;
+        this.anonymousId = anonymousId;
+        this.createdAt = LocalDateTime.now();
     }
 
     public CartOwnership() {}
@@ -54,7 +60,11 @@ public class CartOwnership {
         this.user = user;
     }
 
-    public Session getSession() { return session; }
+    public String getAnonymousId() { return anonymousId; }
 
-    public void setSession(Session session) { this.session = session; }
+    public void setAnonymousId(String anonymousId) { this.anonymousId = anonymousId; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

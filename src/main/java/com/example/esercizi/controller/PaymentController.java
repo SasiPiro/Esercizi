@@ -1,35 +1,24 @@
 package com.example.esercizi.controller;
 
-import com.example.esercizi.dto.CalculationResultDto;
-import com.example.esercizi.model.Session;
-import com.example.esercizi.model.User;
+import com.example.esercizi.dto.CalculationResultDTO;
+import com.example.esercizi.dto.CartDTO;
 import com.example.esercizi.service.PaymentService;
-import com.example.esercizi.service.SessionService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.servlet.http.HttpServletResponse;
-import java.math.BigDecimal;
-
 @RestController
-@RequestMapping("/checkout")
+@RequestMapping("api/v1/checkout")
 public class PaymentController {
 
     private final PaymentService paymentService;
-    private final SessionService sessionService;
 
-    public PaymentController(PaymentService paymentService, SessionService sessionService) {
+    public PaymentController(PaymentService paymentService) {
         this.paymentService = paymentService;
-        this.sessionService = sessionService;
     }
 
     @PostMapping
-    public CalculationResultDto checkout(@RequestHeader(value = "X-SESSION-ID", required = false) String sessionId, User user,
-                                         @RequestParam(required = false) String couponCode,
-                                         HttpServletResponse response) {
-
-        Session session = sessionService.getOrCreate(sessionId);
-        response.setHeader("X-SESSION-ID", session.getId());
-
-        return paymentService.calculateTotal(session, user, couponCode);
+    public CalculationResultDTO checkout(@Valid @RequestBody CartDTO cartDTO,
+            @RequestParam(required = false) String couponCode) {
+        return paymentService.calculateTotal(cartDTO, couponCode);
     }
 }

@@ -10,9 +10,8 @@ public class Cart {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Relazione bidirezionale: un carrello ha molti articoli
-    // mappedBy dice a JPA che il legame è gestito dal campo "cart" in
-    // CartItemEntity
+    // Bidirectional relationship: a cart has many items
+    // mappedBy tells JPA that the mapping is managed by the "cart" field in CartItem
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<CartItem> items;
 
@@ -30,10 +29,10 @@ public class Cart {
     }
 
     public enum CartStatus {
-        TEMPORARY, // carrello creato ma non associato a user
-        ACTIVE, // carrello in uso dall'utente
-        CHECKOUT, // in fase di pagamento
-        PURCHASED // completato
+        TEMPORARY, // cart created but not associated with a user
+        ACTIVE, // cart in use by the user
+        CHECKOUT, // in the payment/checkout phase
+        PURCHASED // completed/purchased
     }
 
     public Long getId() {
