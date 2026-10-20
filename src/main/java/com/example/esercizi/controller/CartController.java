@@ -1,24 +1,20 @@
 package com.example.esercizi.controller;
 
 import com.example.esercizi.dto.CartDTO;
-import com.example.esercizi.model.Cart;
-import com.example.esercizi.model.User;
-import com.example.esercizi.repository.UserRepository;
+import com.example.esercizi.security.JwtUtil;
 import com.example.esercizi.service.CartService;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Objects;
 
 @RestController
 @RequestMapping("api/v1/cart")
 public class CartController {
 
     private final CartService cartService;
+    private final JwtUtil jwtUtil;
 
-    public CartController(CartService cartService) {
+    public CartController(CartService cartService, JwtUtil jwtUtil) {
         this.cartService = cartService;
+        this.jwtUtil = jwtUtil;
     }
 
     @GetMapping
@@ -37,8 +33,17 @@ public class CartController {
         return cartService.removeItem(productCode);
     }
 
+    /**
+     * Merges the caller's guest cart into their user cart after login.
+     *
+     * <p>
+     * The guest proves ownership of the guest cart by sending its signed guest token:
+     * the anonymousId is read from the token, never from a request parameter
+     * (previously any logged-in user could take over any guest cart by its id).
+     * </p>
+     */
     @PostMapping("/merge")
-    public CartDTO mergeCart(@RequestParam String anonymousId) {
-        return cartService.mergeGuestCartIntoUserCart(anonymousId);
+    public CartDTO mergeCart(@RequestHeader("X-Guest-Token") String guestToken) {
+        return cartService.mergeGuestCartIntoUserCart(jwtUtil.extractVerifiedAnonymousId(guestToken));
     }
 }

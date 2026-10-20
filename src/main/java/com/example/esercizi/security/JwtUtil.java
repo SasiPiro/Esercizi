@@ -3,9 +3,11 @@ package com.example.esercizi.security;
 import com.example.esercizi.model.Role;
 import com.example.esercizi.model.User;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -127,6 +129,24 @@ public class JwtUtil{
     public boolean isAnonymous(String token) {
         Boolean isAnon = extractAllClaims(token).get("isAnonymous", Boolean.class);
         return isAnon != null && isAnon;
+    }
+
+    /**
+     * Verifies signature and expiration of a guest token and returns its anonymousId.
+     *
+     * @throws BadCredentialsException if the token is invalid, expired or not a guest token
+     */
+    public String extractVerifiedAnonymousId(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            String anonymousId = claims.get("anonymousId", String.class);
+            if (!Boolean.TRUE.equals(claims.get("isAnonymous", Boolean.class)) || anonymousId == null) {
+                throw new BadCredentialsException("Not a guest token");
+            }
+            return anonymousId;
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new BadCredentialsException("Invalid guest token", e);
+        }
     }
 
     public String extractAnonymousId(String token) {

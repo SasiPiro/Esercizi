@@ -130,6 +130,7 @@ public class CartService {
             CartOwnership guestOwnership = guestOwnershipOpt.get();
             guestOwnership.setAnonymousId(null);
             guestOwnership.setUser(user);
+            guestOwnership.getCart().setCartStatus(Cart.CartStatus.ACTIVE);
             ownershipRepository.save(guestOwnership);
             resultCart = guestOwnership.getCart();
 
@@ -169,14 +170,16 @@ public class CartService {
         Cart guestCart = guest.getCart();
         Cart userCart = user.getCart();
 
+        // Copy quantities instead of moving the CartItem entities: the guest cart has
+        // orphanRemoval=true, so moved items would be deleted together with it.
+        // addOrIncrement also merges lines for products present in both carts.
         for (CartItem item : guestCart.getItems()) {
-            item.setCart(userCart);
-            userCart.getItems().add(item);
+            userCart.addOrIncrement(item.getProduct(), item.getQuantity());
         }
-        guestCart.getItems().clear();
 
-        cartRepository.delete(guestCart);
+        // Ownership first (it references the cart), then the cart and its items
         ownershipRepository.delete(guest);
+        cartRepository.delete(guestCart);
 
         return userCart;
     }
