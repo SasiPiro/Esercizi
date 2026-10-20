@@ -11,6 +11,12 @@ spring:
     hibernate:
       ddl-auto: none
     show-sql: false
+    # Do not keep a DB connection open for the whole HTTP request and do not
+    # lazy-load from controllers: every query is explicit in the service layer.
+    open-in-view: false
+    properties:
+      # Safety net for lazy associations that are not fetched explicitly
+      hibernate.default_batch_fetch_size: 50
   sql:
     init:
       mode: always

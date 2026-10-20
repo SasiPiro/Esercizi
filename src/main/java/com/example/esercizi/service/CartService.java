@@ -82,14 +82,12 @@ public class CartService {
 
         // LOGGED IN USER
         if (user != null && user.getId() != null) {
-            return ownershipRepository.findByUser(user)
-                    .map(CartOwnership::getCart)
+            return ownershipRepository.findCartWithItemsByUserId(user.getId())
                     .orElseGet(() -> createUserCart(user));
         }
         // GUEST
         if (anonymousId != null) {
-            return ownershipRepository.findByAnonymousId(anonymousId)
-                    .map(CartOwnership::getCart)
+            return ownershipRepository.findCartWithItemsByAnonymousId(anonymousId)
                     .orElseGet(() -> createGuestCart(anonymousId));
         }
         throw new MissingResourceException("User or AnonymousId must be provided");
