@@ -4,6 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -69,7 +71,29 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(MissingResourceException.class)
     public ProblemDetail handleMissingResource(MissingResourceException ex) {
-        return createProblemDetail(ex, HttpStatus.PARTIAL_CONTENT, ERROR_MISSING_RESOURCE, TYPE_MISSING_RESOURCE);
+        return createProblemDetail(ex, HttpStatus.BAD_REQUEST, ERROR_MISSING_RESOURCE, TYPE_MISSING_RESOURCE);
+    }
+
+    // --- SECURITY ---
+    // Without these handlers, exceptions thrown inside controllers/services (e.g. the
+    // AuthenticationManager in AuthService.login, or @PreAuthorize) fall into the
+    // catch-all below and become HTTP 500.
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ProblemDetail handleAuthentication(AuthenticationException ex) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+        // Generic message on purpose: do not reveal whether the username exists
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ERROR_INVALID_CREDENTIALS);
+        problemDetail.setTitle("Unauthorized");
+        problemDetail.setType(TYPE_UNAUTHORIZED);
+        problemDetail.setProperty("service", serviceName);
+        problemDetail.setProperty("timestamp", Instant.now());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied(AccessDeniedException ex) {
+        return createProblemDetail(ex, HttpStatus.FORBIDDEN, "Forbidden", TYPE_FORBIDDEN);
     }
 
     // --- 2. OVERRIDE STANDARD METHOD (DTO VALIDATION) ---
