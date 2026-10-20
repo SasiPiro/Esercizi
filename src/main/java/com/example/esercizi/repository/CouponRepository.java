@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 
 public interface CouponRepository extends JpaRepository<Coupon, Long> {
@@ -35,17 +34,19 @@ public interface CouponRepository extends JpaRepository<Coupon, Long> {
                   @Param("now") Instant now);
 
     /**
-     * Finds all ACTIVE promotions that need to be marked as EXPIRED.
-     * Conditions: maximum usage reached OR expiry date has passed.
+     * Marks as EXPIRED, in a single statement, every ACTIVE coupon that reached its
+     * usage limit or its expiry date. Used by {@code PromotionExpiryJob}.
      *
-     * <p>
-     * Used by the {@code PromotionExpiryJob} Scheduled Job every 60 seconds.
-     * </p>
+     * @return the number of coupons expired
      */
+    @Modifying
     @Query("""
-            SELECT p FROM Coupon p
-            WHERE p.status = com.example.esercizi.model.Coupon$CouponStatus.ACTIVE
-            AND (p.currentUsage >= p.usageLimit OR p.expiryDate < :now)
+            UPDATE Coupon c
+               SET c.status = :expired, c.version = c.version + 1
+             WHERE c.status = :active
+               AND (c.currentUsage >= c.usageLimit OR c.expiryDate < :now)
             """)
-    List<Coupon> findExpirablePromotions(@Param("now") Instant now);
+    int expireStale(@Param("active") Coupon.CouponStatus active,
+                    @Param("expired") Coupon.CouponStatus expired,
+                    @Param("now") Instant now);
 }

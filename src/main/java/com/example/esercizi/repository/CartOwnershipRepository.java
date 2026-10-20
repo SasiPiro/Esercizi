@@ -5,11 +5,11 @@ import com.example.esercizi.model.CartOwnership;
 import com.example.esercizi.model.User;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 
 public interface CartOwnershipRepository extends JpaRepository<CartOwnership, Long> {
@@ -41,7 +41,19 @@ public interface CartOwnershipRepository extends JpaRepository<CartOwnership, Lo
     @EntityGraph(attributePaths = {"cart", "cart.items", "cart.items.product"})
     Optional<CartOwnership> findByUser(User user);
 
-    List<CartOwnership> findByAnonymousIdIsNotNullAndCreatedAtBefore(LocalDateTime expiryDate);
+    /**
+     * Deletes, in a single statement, the guest carts created before {@code cutoff}.
+     * ON DELETE CASCADE removes their ownership rows and items. Used by {@code CartCleanupJob}.
+     *
+     * @return the number of carts deleted
+     */
+    @Modifying
+    @Query(value = """
+            DELETE FROM cart WHERE id IN (
+                SELECT cart_id FROM cart_ownership
+                 WHERE anonymous_id IS NOT NULL AND created_at < :cutoff)
+            """, nativeQuery = true)
+    int deleteGuestCartsCreatedBefore(@Param("cutoff") LocalDateTime cutoff);
 
     Optional<CartOwnership> findByCartId(Long cartId);
 }
