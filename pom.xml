@@ -8,10 +8,13 @@
 		<version>4.0.2</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.example</groupId>
-	<artifactId>esercizi</artifactId>
+	<groupId>com.ecommerce</groupId>
+	<artifactId>ecommerce-monolith</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>esercizi</name>	<properties>
+	<name>ecommerce-monolith</name>
+	<description>E-commerce backend as a single deployable: pricing engine, promotions, coupons, cart</description>
+
+	<properties>
 		<java.version>21</java.version>
 		<shedlock.version>7.10.1</shedlock.version>
 	</properties>

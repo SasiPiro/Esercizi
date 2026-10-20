@@ -17,4 +17,4 @@ app:
 
 logging:
   level:
-    com.example.esercizi: DEBUG
+    com.ecommerce.monolith: DEBUG

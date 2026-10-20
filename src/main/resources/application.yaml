@@ -1,6 +1,6 @@
 spring:
   application:
-    name: esercizi
+    name: ecommerce-monolith
   datasource:
     url: jdbc:h2:mem:testdb
     driver-class-name: org.h2.Driver
@@ -52,6 +52,6 @@ logging:
     # e.g. scheduled jobs
     correlation: "[%X{requestId:--}] "
   level:
-    com.example.esercizi: INFO
+    com.ecommerce.monolith: INFO
   # In Kubernetes / a log platform, JSON lines are easier to search: set the environment
   # variable LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs (or logstash). The requestId is then a field.
