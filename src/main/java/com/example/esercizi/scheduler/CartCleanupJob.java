@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -35,13 +35,12 @@ public class CartCleanupJob {
     }
 
     @Scheduled(cron = "0 1 0 * * *")
-    @Transactional
-    public int cleanupExpiredGuestCarts() {
+    @SchedulerLock(name = "cleanupExpiredGuestCarts", lockAtLeastFor = "PT5M", lockAtMostFor = "PT30M")
+    public void cleanupExpiredGuestCarts() {
         // created_at is written by @CreationTimestamp in the JVM time zone
         LocalDateTime cutoff = LocalDateTime.ofInstant(
                 timeService.now().minus(GUEST_CART_RETENTION), ZoneId.systemDefault());
         int deleted = ownershipRepository.deleteGuestCartsCreatedBefore(cutoff);
         log.info("[CART_CLEANUP] deleted={} guest carts created before {}", deleted, cutoff);
-        return deleted;
     }
 }

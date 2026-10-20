@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS roles;
 DROP TABLE IF EXISTS user_app;
 DROP TABLE IF EXISTS coupon;
 DROP TABLE IF EXISTS product;
+DROP TABLE IF EXISTS shedlock;
 
 -- =============================================
 -- CORE ENTITIES
@@ -102,4 +103,17 @@ CREATE TABLE coupon (
 
     CHECK (discount_percentage > 0 AND discount_percentage <= 1),
     CHECK (current_usage >= 0)
+);
+
+-- =============================================
+-- SCHEDULER LOCKS (ShedLock)
+-- One row per job: with several replicas only the instance holding the lock runs it
+-- =============================================
+
+CREATE TABLE shedlock (
+    name VARCHAR(64) NOT NULL,
+    lock_until TIMESTAMP NOT NULL,
+    locked_at TIMESTAMP NOT NULL,
+    locked_by VARCHAR(255) NOT NULL,
+    PRIMARY KEY (name)
 );

@@ -27,7 +27,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+// Automatic triggers off: the test invokes the jobs itself, with a fixed clock
+@SpringBootTest(properties = "app.scheduling.enabled=false")
 @AutoConfigureMockMvc
 class SchedulerJobsTests {
 
@@ -47,16 +48,23 @@ class SchedulerJobsTests {
     }
 
     @Test
-    void expiresCouponsPastTheirDateOrUsageLimitOnly() {
+    void expiresCouponsPastTheirDateOrUsageLimitOnlyAndRunsOncePerLockWindow() {
         String pastDate = coupon(1, 0, NOW.minus(Duration.ofDays(1)));
         String usedUp = coupon(1, 1, NOW.plus(Duration.ofDays(30)));
         String stillValid = coupon(5, 1, NOW.plus(Duration.ofDays(30)));
 
-        assertThat(promotionExpiryJob.expireStalePromotions()).isGreaterThanOrEqualTo(2);
+        promotionExpiryJob.expireStalePromotions();
 
         assertThat(couponStatus(pastDate)).isEqualTo(CouponStatus.EXPIRED);
         assertThat(couponStatus(usedUp)).isEqualTo(CouponStatus.EXPIRED);
         assertThat(couponStatus(stillValid)).isEqualTo(CouponStatus.ACTIVE);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM shedlock WHERE name = 'expireStalePromotions'",
+                Integer.class)).isEqualTo(1);
+
+        // A second trigger inside lockAtLeastFor (another replica, or the same one) is skipped
+        String staleAfterFirstRun = coupon(1, 0, NOW.minus(Duration.ofDays(1)));
+        promotionExpiryJob.expireStalePromotions();
+        assertThat(couponStatus(staleAfterFirstRun)).isEqualTo(CouponStatus.ACTIVE);
     }
 
     @Test

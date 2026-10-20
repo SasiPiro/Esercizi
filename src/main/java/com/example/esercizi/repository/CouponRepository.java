@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -40,6 +41,7 @@ public interface CouponRepository extends JpaRepository<Coupon, Long> {
      * @return the number of coupons expired
      */
     @Modifying
+    @Transactional
     @Query("""
             UPDATE Coupon c
                SET c.status = :expired, c.version = c.version + 1

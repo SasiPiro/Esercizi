@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 
 import java.time.Instant;
 
@@ -36,9 +36,14 @@ public class PromotionExpiryJob {
         this.timeService = timeService;
     }
 
+    /**
+     * The lock is held at least 50 seconds, so across all replicas the job runs at most
+     * once per minute even if their schedules are not aligned. The transaction is opened
+     * by the repository method, inside the lock.
+     */
     @Scheduled(fixedRate = 60_000)
-    @Transactional
-    public int expireStalePromotions() {
+    @SchedulerLock(name = "expireStalePromotions", lockAtLeastFor = "PT50S", lockAtMostFor = "PT5M")
+    public void expireStalePromotions() {
         Instant now = timeService.now();
         int expired = couponRepository.expireStale(CouponStatus.ACTIVE, CouponStatus.EXPIRED, now);
         if (expired > 0) {
@@ -46,6 +51,5 @@ public class PromotionExpiryJob {
         } else {
             log.debug("[PROMOTION_LIFECYCLE] nothing to expire at timestamp={}", now);
         }
-        return expired;
     }
 }
