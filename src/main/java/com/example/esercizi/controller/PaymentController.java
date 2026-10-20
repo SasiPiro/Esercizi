@@ -1,9 +1,7 @@
 package com.example.esercizi.controller;
 
 import com.example.esercizi.dto.CalculationResultDTO;
-import com.example.esercizi.dto.CartDTO;
 import com.example.esercizi.service.PaymentService;
-import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -16,9 +14,15 @@ public class PaymentController {
         this.paymentService = paymentService;
     }
 
+    /** Preview of the total for the current cart. Idempotent: does not consume the coupon. */
+    @GetMapping("/quote")
+    public CalculationResultDTO quote(@RequestParam(required = false) String couponCode) {
+        return paymentService.quote(couponCode);
+    }
+
+    /** Confirms the purchase of the current cart. The request has no body: items and prices come from the server. */
     @PostMapping
-    public CalculationResultDTO checkout(@Valid @RequestBody CartDTO cartDTO,
-            @RequestParam(required = false) String couponCode) {
-        return paymentService.calculateTotal(cartDTO, couponCode);
+    public CalculationResultDTO checkout(@RequestParam(required = false) String couponCode) {
+        return paymentService.placeOrder(couponCode);
     }
 }

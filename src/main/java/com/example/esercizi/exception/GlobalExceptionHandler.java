@@ -62,6 +62,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createProblemDetail(ex, HttpStatus.CONFLICT, ERROR_COUPON_NOT_CUMULATIVE, TYPE_COUPON_NOT_CUMULATIVE);
     }
 
+    @ExceptionHandler(CartCheckoutConflictException.class)
+    public ProblemDetail handleCheckoutConflict(CartCheckoutConflictException ex) {
+        return createProblemDetail(ex, HttpStatus.CONFLICT, "Checkout conflict", TYPE_CHECKOUT_CONFLICT);
+    }
+
     @ExceptionHandler(MissingResourceException.class)
     public ProblemDetail handleMissingResource(MissingResourceException ex) {
         return createProblemDetail(ex, HttpStatus.PARTIAL_CONTENT, ERROR_MISSING_RESOURCE, TYPE_MISSING_RESOURCE);

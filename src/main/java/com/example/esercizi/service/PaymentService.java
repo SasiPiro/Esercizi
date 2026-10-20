@@ -1,130 +1,84 @@
 package com.example.esercizi.service;
 
+import com.example.esercizi.aspect.TrackPromotion;
+import com.example.esercizi.constants.AppConstants;
 import com.example.esercizi.dto.CalculationResultDTO;
-import com.example.esercizi.dto.CartDTO;
-import com.example.esercizi.dto.PromotionContext;
-import com.example.esercizi.mapper.CartMapper;
+import com.example.esercizi.exception.CartCheckoutConflictException;
+import com.example.esercizi.exception.CartEmptyException;
 import com.example.esercizi.model.Cart;
-import com.example.esercizi.model.User;
-import com.example.esercizi.repository.UserRepository;
-import com.example.esercizi.strategy.PromotionStrategy;
+import com.example.esercizi.model.Coupon;
+import com.example.esercizi.repository.CartRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import com.example.esercizi.aspect.TrackPromotion;
-import com.example.esercizi.constants.AppConstants;
-import com.example.esercizi.exception.CartEmptyException;
-import com.example.esercizi.exception.CouponNotCumulativeException;
-import com.example.esercizi.facade.AuthFacade;
-import com.example.esercizi.model.Coupon;
+import java.time.Instant;
+import java.util.Optional;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.List;
-
+/**
+ * Checkout flow, split in two operations:
+ * <ul>
+ * <li>{@link #quote(String)}: read-only preview of the total. Never consumes a coupon.</li>
+ * <li>{@link #placeOrder(String)}: confirms the purchase, redeems the coupon and closes the cart.</li>
+ * </ul>
+ * In both cases the cart is loaded from the database for the authenticated principal:
+ * the client never sends items or prices.
+ */
 @Service
-@Transactional
 public class PaymentService {
 
-    private final List<PromotionStrategy> strategies;
-    private final TimeService timeService;
-    private final CartCalculator cartCalculator;
+    private final CartService cartService;
+    private final CartRepository cartRepository;
     private final CouponService couponService;
-    private final UserRepository userRepository;
-    private final CartMapper cartMapper;
-    private final AuthFacade authFacade;
+    private final PricingEngine pricingEngine;
+    private final TimeService timeService;
 
-    public PaymentService(List<PromotionStrategy> strategies, TimeService timeService,
-            CartCalculator cartCalculator, CouponService couponService,
-            CartService cartService, UserRepository userRepository,
-            AuthFacade authFacade, CartMapper cartMapper) {
-        this.strategies = strategies;
-        this.timeService = timeService;
-        this.cartCalculator = cartCalculator;
+    public PaymentService(CartService cartService, CartRepository cartRepository,
+            CouponService couponService, PricingEngine pricingEngine, TimeService timeService) {
+        this.cartService = cartService;
+        this.cartRepository = cartRepository;
         this.couponService = couponService;
-        this.userRepository = userRepository;
-        this.cartMapper = cartMapper;
-        this.authFacade = authFacade;
+        this.pricingEngine = pricingEngine;
+        this.timeService = timeService;
     }
 
-    /**
-     * Calculates the total price of the cart using a hybrid approach:
-     * <ol>
-     * <li><strong>Automatic promotions</strong> (Strategy Pattern): applies the
-     * active promotions based on the context (VIP user, Black Friday period,
-     * etc.)</li>
-     * <li><strong>Coupon code</strong> (if present): applies the additional discount
-     * via {@link CouponService}, with concurrency managed through Optimistic
-     * Locking</li>
-     * </ol>
-     *
-     * @param cartDTO    Cart to pay for
-     * @param couponCode Optional coupon code (can be null)
-     * @return Final price after all applied discounts
-     */
-    // Final calculation: Base * (1 - Total%)
     @TrackPromotion
-    public CalculationResultDTO calculateTotal(CartDTO cartDTO, String couponCode) {
-        // Check empty cart
-        if (cartDTO == null || cartDTO.items() == null || cartDTO.items().isEmpty()) {
+    @Transactional // not readOnly: the first request of a principal may create its empty cart
+    public CalculationResultDTO quote(String couponCode) {
+        CartService.CurrentCart current = cartService.currentCart();
+        Optional<Coupon> coupon = StringUtils.hasText(couponCode)
+                ? Optional.of(couponService.validate(couponCode))
+                : Optional.empty();
+        return pricingEngine.price(current.cart(), current.user(), timeService.now(), coupon);
+    }
+
+    @TrackPromotion
+    @Transactional
+    public CalculationResultDTO placeOrder(String couponCode) {
+        CartService.CurrentCart current = cartService.currentCart();
+        Cart cart = current.cart();
+        Instant now = timeService.now();
+
+        if (cart.getItems().isEmpty()) {
             throw new CartEmptyException(AppConstants.ERROR_CART_EMPTY);
         }
-
-        String principal = authFacade.getCurrentUsername();
-        User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
-
-        Cart cart = cartMapper.toEntity(cartDTO);
-
-        // 1. Calculate base price
-        BigDecimal baseTotal = cartCalculator.calculateTotal(cart);
-        List<String> strategiesApplied = new ArrayList<>();
-        PromotionContext context = new PromotionContext(cart, timeService.now(), user);
-
-        BigDecimal accumulatedDiscountPercentage = BigDecimal.ZERO;
-        boolean isSeasonalActive = false;
-
-        // 2. Iterate over automatic strategies (VIP, Seasonal)
-        for (PromotionStrategy strategy : strategies) {
-            if (strategy.supports(context)) {
-                accumulatedDiscountPercentage = accumulatedDiscountPercentage.add(strategy.getDiscountPercentage());
-                strategiesApplied.add(strategy.getClass().getSimpleName());
-
-                if (strategy.getType() == PromotionStrategy.StrategyType.SEASONAL) {
-                    isSeasonalActive = true;
-                }
-            }
+        // Atomic guard against double-submitted checkouts of the same cart
+        if (cartRepository.claimForCheckout(cart.getId()) == 0) {
+            throw new CartCheckoutConflictException("Cart is already being checked out");
         }
 
-        // 3. Coupon management
+        Optional<Coupon> coupon = Optional.empty();
         if (StringUtils.hasText(couponCode)) {
-            // Rule: Coupon cannot be combined with seasonal promotions (Black Friday, Christmas)
-            // Exception: VIP is always combinable (already added above)
-            if (isSeasonalActive) {
-                throw new CouponNotCumulativeException(AppConstants.ERROR_COUPON_NOT_CUMULATIVE);
-            }
-
-            // Redeem coupon and add percentage
-            Coupon promo = couponService.redeemCoupon(couponCode);
-            accumulatedDiscountPercentage = accumulatedDiscountPercentage.add(promo.getDiscountPercentage());
-            strategiesApplied.add("COUPON:" + couponCode);
+            // Check the combination rule BEFORE consuming a coupon use
+            pricingEngine.assertCouponAllowed(cart, current.user(), now);
+            coupon = Optional.of(couponService.redeemCoupon(couponCode));
         }
 
-        // 4. Cap at 100% discount for safety
-        BigDecimal finalRate = accumulatedDiscountPercentage.min(BigDecimal.ONE).max(BigDecimal.ZERO);
+        CalculationResultDTO result = pricingEngine.price(cart, current.user(), now, coupon);
 
-        // Formula: Price * (1 - TotalDiscount)
-        // E.g.: 100 * (1 - 0.30) = 70
-        BigDecimal multiplier = BigDecimal.ONE.subtract(finalRate);
-
-        BigDecimal finalTotal = baseTotal.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
-
-        return new CalculationResultDTO(
-                baseTotal,
-                finalTotal,
-                baseTotal.subtract(finalTotal),
-                strategiesApplied,
-                couponCode);
+        cart.setCartStatus(Cart.CartStatus.PURCHASED);
+        cartService.detachPurchasedCart(cart);
+        // Next step: persist an Order with a price snapshot and publish an OrderPlaced event
+        return result;
     }
 }

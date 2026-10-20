@@ -56,6 +56,25 @@ public class CartService {
         return cartMapper.toDto(cart, user, anonymousId);
     }
 
+    /** The cart of the authenticated principal (user or guest), loaded from the database. */
+    public record CurrentCart(Cart cart, User user, String anonymousId) {
+    }
+
+    public CurrentCart currentCart() {
+        String principal = authFacade.getCurrentUsername();
+        User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
+        String anonymousId = (user == null) ? principal : null;
+        return new CurrentCart(getCartEntity(anonymousId, user), user, anonymousId);
+    }
+
+    /**
+     * Detaches a purchased cart from its owner, so the next request starts a new cart.
+     * The cart row itself is kept with status PURCHASED as a record of the purchase.
+     */
+    public void detachPurchasedCart(Cart cart) {
+        ownershipRepository.findByCartId(cart.getId()).ifPresent(ownershipRepository::delete);
+    }
+
     public Cart getCartEntity(String anonymousId, User user) {
 
         // LOGGED IN USER

@@ -28,6 +28,22 @@ public class CouponService {
     }
 
     /**
+     * Read-only check used by the checkout preview: the coupon must exist, be ACTIVE,
+     * not expired and have uses left. Does NOT consume a use.
+     */
+    @Transactional(readOnly = true)
+    public Coupon validate(String couponCode) {
+        Coupon coupon = couponRepository
+                .findByCodeAndStatus(couponCode, CouponStatus.ACTIVE)
+                .orElseThrow(() -> new PromotionNotFoundException(ERROR_PROMOTION_NOT_FOUND));
+        if (!coupon.getExpiryDate().isAfter(timeService.now())
+                || coupon.getCurrentUsage() >= coupon.getUsageLimit()) {
+            throw new PromotionExpiredException(ERROR_PROMOTION_EXPIRED);
+        }
+        return coupon;
+    }
+
+    /**
      * Redeems a coupon code and returns the updated Coupon object.
      *
      * <p>

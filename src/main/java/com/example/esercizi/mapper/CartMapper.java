@@ -9,7 +9,6 @@ import com.example.esercizi.model.Product;
 import com.example.esercizi.model.User;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -54,42 +53,6 @@ public class CartMapper {
                 product.getBasePrice());
     }
 
-    public Product toEntity (ProductDTO productDTO){
-        if (productDTO == null) {
-            return null;
-        }
-
-        return new Product(
-                productDTO.id(),
-                productDTO.code(),
-                productDTO.basePrice()
-        );
-    }
-
-    public Cart toEntity(CartDTO dto) {
-        if (dto == null) {
-            return null;
-        }
-
-        // 1. Map the list of CartItemDTOs to CartItems
-        List<CartItem> entityItems = new ArrayList<>();
-        if (dto.items() != null) {
-            entityItems = dto.items().stream()
-                    .map(itemDto -> {
-                        CartItem item = new CartItem();
-                        item.setId(itemDto.id());
-                        item.setQuantity(itemDto.quantity());
-                        item.setProduct(toEntity(itemDto.product()));
-                        return item;
-                    })
-                    .toList();
-        }
-        Cart cart = new Cart(dto.id(), entityItems);
-
-        // Associate each item with this cart
-        if (cart.getItems() != null) {
-            cart.getItems().forEach(item -> item.setCart(cart));
-        }
-        return cart;
-    }
+    // NOTE: no DTO -> entity mapping for carts on purpose. Carts are always loaded from the
+    // database, so prices can never come from a client-supplied payload.
 }

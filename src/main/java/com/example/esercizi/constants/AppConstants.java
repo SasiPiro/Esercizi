@@ -34,6 +34,7 @@ public final class AppConstants {
     public static final URI TYPE_CONCURRENT_PROMOTION = URI.create(BASE_URL + "concurrent-promotion-access");
     public static final URI TYPE_COUPON_NOT_CUMULATIVE = URI.create(BASE_URL + "coupon-not-cumulative");
     public static final URI TYPE_MISSING_RESOURCE = URI.create(BASE_URL + "missing-resource");
+    public static final URI TYPE_CHECKOUT_CONFLICT = URI.create(BASE_URL + "checkout-conflict");
 
     // Promotion duration
     public static final Instant BLACKFRIDAY_PROMOTION_START = Instant.parse("2026-11-25T00:00:00Z");
