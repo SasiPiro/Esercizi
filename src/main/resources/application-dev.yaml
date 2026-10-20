@@ -14,3 +14,7 @@ spring:
 app:
   cors:
     allowed-origins: http://localhost:3000,http://localhost:5173
+
+logging:
+  level:
+    com.example.esercizi: DEBUG
