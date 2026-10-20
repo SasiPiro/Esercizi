@@ -3,6 +3,10 @@ package com.example.esercizi.controller;
 import com.example.esercizi.dto.CartDTO;
 import com.example.esercizi.security.JwtUtil;
 import com.example.esercizi.service.CartService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -23,13 +27,13 @@ public class CartController {
     }
 
     @PostMapping("/add")
-    public CartDTO addItem(@RequestParam String productCode,
-            @RequestParam int quantity) {
+    public CartDTO addItem(@RequestParam @NotBlank @Size(max = 64) String productCode,
+            @RequestParam @Min(1) @Max(CartService.MAX_QUANTITY_PER_LINE) int quantity) {
         return cartService.addItem(productCode, quantity);
     }
 
     @PostMapping("/remove")
-    public CartDTO removeItem(@RequestParam String productCode) {
+    public CartDTO removeItem(@RequestParam @NotBlank @Size(max = 64) String productCode) {
         return cartService.removeItem(productCode);
     }
 

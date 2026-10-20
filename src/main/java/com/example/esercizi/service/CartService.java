@@ -24,6 +24,9 @@ import static com.example.esercizi.constants.AppConstants.ERROR_USER_NOT_FOUND;
 @Transactional
 public class CartService {
 
+    /** Upper bound for the quantity of a single cart line. */
+    public static final int MAX_QUANTITY_PER_LINE = 99;
+
     private final CartRepository cartRepository;
     private final CartOwnershipRepository ownershipRepository;
     private final ProductRepository productRepository;
@@ -200,6 +203,14 @@ public class CartService {
         Product product = productRepository.findByCode(productCode)
                 .orElseThrow(() -> ProductNotFoundException.forCode(productCode));
 
+        int alreadyInCart = cart.getItems().stream()
+                .filter(i -> i.getProduct().getId().equals(product.getId()))
+                .mapToInt(CartItem::getQuantity)
+                .sum();
+        if (alreadyInCart + quantity > MAX_QUANTITY_PER_LINE) {
+            throw new IllegalArgumentException(
+                    "At most " + MAX_QUANTITY_PER_LINE + " units per product, already in cart: " + alreadyInCart);
+        }
         cart.addOrIncrement(product, quantity);
         Cart savedCart = cartRepository.save(cart);
         return cartMapper.toDto(savedCart, user, anonymousId);

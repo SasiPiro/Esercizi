@@ -74,6 +74,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createProblemDetail(ex, HttpStatus.BAD_REQUEST, ERROR_MISSING_RESOURCE, TYPE_MISSING_RESOURCE);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
+        return createProblemDetail(ex, HttpStatus.BAD_REQUEST, "Invalid request", TYPE_VALIDATION_ERROR);
+    }
+
     // --- SECURITY ---
     // Without these handlers, exceptions thrown inside controllers/services (e.g. the
     // AuthenticationManager in AuthService.login, or @PreAuthorize) fall into the
