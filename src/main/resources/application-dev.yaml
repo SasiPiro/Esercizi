@@ -1,0 +1,7 @@
+# Local development only. Activate with:
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+# or SPRING_PROFILES_ACTIVE=dev. Never use this profile in production:
+# everything in this file is public in the repository.
+
+jwt:
+  secret: dev-only-YIBpwCkIRy79z-W38ee4DrNGol63pyqwrG97y4U6d88Zy4tetm34Aw

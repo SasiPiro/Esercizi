@@ -16,34 +16,53 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 @Component
-public class JwtUtil{
+public class JwtUtil {
 
-    @Value("${jwt.secret}")
-    private String secret;
-
-    @Value("${jwt.expiration:86400000}")  // Default: 24 hours
-    private Long expiration;
+    /** HS256 requires a key of at least 256 bits. */
+    static final int MIN_SECRET_BYTES = 32;
 
     /**
-     * Generate JWT token for user with roles and permissions
+     * Secrets that were committed to the repository at some point: anyone can read them,
+     * so a token signed with them proves nothing.
+     */
+    private static final Set<String> KNOWN_PUBLIC_SECRETS = Set.of(
+            "your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-production");
+
+    private final SecretKey key;
+    private final long expiration;
+
+    /**
+     * Fails fast at startup when the secret is missing, too short or publicly known:
+     * better a crash on deploy than an application that accepts forged tokens.
+     */
+    public JwtUtil(@Value("${jwt.secret:}") String secret,
+                   @Value("${jwt.expiration:86400000}") long expiration) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("jwt.secret is not set: provide it with the JWT_SECRET environment "
+                    + "variable (or run with the 'dev' profile for local development)");
+        }
+        if (KNOWN_PUBLIC_SECRETS.contains(secret)) {
+            throw new IllegalStateException("jwt.secret is a publicly known value: generate a new one");
+        }
+        if (secret.getBytes(StandardCharsets.UTF_8).length < MIN_SECRET_BYTES) {
+            throw new IllegalStateException("jwt.secret must be at least " + MIN_SECRET_BYTES + " bytes long");
+        }
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)); // built once, not per call
+        this.expiration = expiration;
+    }
+
+    /**
+     * Generate JWT token for user with roles
      */
     public String generateToken(User user) {
         Map<String, Object> claims = new HashMap<>();
-
-        // User info
         claims.put("userId", user.getId());
         claims.put("username", user.getUsername());
         claims.put("isAnonymous", false);
-
-        // Roles (list of role names)
-        List<String> roles = user.getRoles().stream()
-                .map(Role::getName)
-                .collect(Collectors.toList());
-        claims.put("roles", roles);
-
+        claims.put("roles", user.getRoles().stream().map(Role::getName).toList());
         return buildToken(claims, user.getUsername());
     }
 
@@ -52,38 +71,32 @@ public class JwtUtil{
         claims.put("anonymousId", anonymousId);
         claims.put("isAnonymous", true);
         claims.put("roles", List.of("GUEST"));
-
         return buildToken(claims, "guest_" + anonymousId);
     }
 
     private String buildToken(Map<String, Object> claims, String subject) {
         Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + expiration);
-
-        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-
         return Jwts.builder()
                 .claims(claims)
                 .subject(subject)
                 .issuedAt(now)
-                .expiration(expiryDate)
+                .expiration(new Date(now.getTime() + expiration))
                 .signWith(key)
                 .compact();
     }
 
-    /**
-     * Get expiration time in milliseconds
-     */
+    /** Get expiration time in milliseconds */
     public Long getExpirationTime() {
         return expiration;
     }
 
-
     /**
-     * Extract all claims from token
+     * Verifies signature and expiration and returns the claims.
+     * Parse a token ONCE per request and read every claim from the result.
+     *
+     * @throws JwtException if the token is invalid or expired
      */
-    public Claims extractAllClaims(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    public Claims parse(String token) {
         return Jwts.parser()
                 .verifyWith(key)
                 .build()
@@ -91,44 +104,23 @@ public class JwtUtil{
                 .getPayload();
     }
 
-    /**
-     * Extract username from token
-     */
-    public String extractSubject(String token) {
-        return extractAllClaims(token).getSubject();
+    public static boolean isAnonymous(Claims claims) {
+        return Boolean.TRUE.equals(claims.get("isAnonymous", Boolean.class));
     }
 
-    public String extractUsername(String token) {
-        return extractAllClaims(token).get("username",String.class);
+    /** Principal name: the username for users, the anonymousId for guests. */
+    public static String principalOf(Claims claims) {
+        return isAnonymous(claims)
+                ? claims.get("anonymousId", String.class)
+                : claims.get("username", String.class);
     }
 
-    /**
-     * Extract user ID from token
-     */
-    public Long extractUserId(String token) {
-        return extractAllClaims(token).get("userId", Long.class);
-    }
-
-    public String extractUserEmail(String token) {
-        return extractAllClaims(token).get("email", String.class);
-    }
-
-    // RBAC
-    /**
-     * Extract roles from token
-     */
-    @SuppressWarnings("unchecked")
-    public List<String> extractRoles(String token) {
-        Object roles = extractAllClaims(token).get("roles");
-        if (roles instanceof List) {
-            return (List<String>) roles;
+    public static List<String> rolesOf(Claims claims) {
+        Object roles = claims.get("roles");
+        if (roles instanceof List<?> list) {
+            return list.stream().map(String::valueOf).toList();
         }
         return List.of();
-    }
-
-    public boolean isAnonymous(String token) {
-        Boolean isAnon = extractAllClaims(token).get("isAnonymous", Boolean.class);
-        return isAnon != null && isAnon;
     }
 
     /**
@@ -138,37 +130,14 @@ public class JwtUtil{
      */
     public String extractVerifiedAnonymousId(String token) {
         try {
-            Claims claims = extractAllClaims(token);
+            Claims claims = parse(token);
             String anonymousId = claims.get("anonymousId", String.class);
-            if (!Boolean.TRUE.equals(claims.get("isAnonymous", Boolean.class)) || anonymousId == null) {
+            if (!isAnonymous(claims) || anonymousId == null) {
                 throw new BadCredentialsException("Not a guest token");
             }
             return anonymousId;
         } catch (JwtException | IllegalArgumentException e) {
             throw new BadCredentialsException("Invalid guest token", e);
-        }
-    }
-
-    public String extractAnonymousId(String token) {
-        return extractAllClaims(token).get("anonymousId", String.class);
-    }
-
-
-    /**
-     * Check if token is expired
-     */
-    public boolean isTokenExpired(String token) {
-        return extractAllClaims(token).getExpiration().before(new Date());
-    }
-
-    /**
-     * Validate token
-     */
-    public boolean validateToken(String token) {
-        try {
-            return !isTokenExpired(token);
-        } catch (Exception e) {
-            return false;
         }
     }
 }

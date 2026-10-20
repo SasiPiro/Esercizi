@@ -7,9 +7,9 @@ import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
@@ -25,8 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * statements whether it holds 1 product or 4.
  */
 @SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
+@ActiveProfiles("dev")
 @AutoConfigureMockMvc
-
 class CartQueryCountTests {
 
     @Autowired MockMvc mvc;

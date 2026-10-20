@@ -29,7 +29,10 @@ spring:
       enabled: true
 
 jwt:
-  secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-production}
+  # No default on purpose: the application refuses to start without a strong secret.
+  # Production: set the JWT_SECRET environment variable (e.g. from a Kubernetes Secret).
+  # Local development: run with the 'dev' profile (application-dev.yaml).
+  secret: ${JWT_SECRET:}
   expiration: ${JWT_EXPIRATION:86400000}
 
 promotions:

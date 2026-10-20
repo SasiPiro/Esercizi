@@ -1,9 +1,12 @@
 package com.example.esercizi.security;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -12,52 +15,50 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
+/**
+ * Authenticates requests carrying "Authorization: Bearer &lt;jwt&gt;".
+ *
+ * <p>
+ * The token is parsed and verified ONCE (signature + expiration). Requests without a
+ * token simply continue unauthenticated: public endpoints work, protected ones get 401
+ * from the entry point. Invalid tokens are logged at DEBUG without stack trace, so a
+ * client sending garbage cannot flood the logs.
+ * </p>
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private final JwtUtil jwtTokenUtil;
+    private static final String BEARER_PREFIX = "Bearer ";
 
-    public JwtAuthenticationFilter(JwtUtil jwtTokenUtil) {
-        this.jwtTokenUtil = jwtTokenUtil;
+    private final JwtUtil jwtUtil;
+
+    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
+        this.jwtUtil = jwtUtil;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        String requestTokenHeader = request.getHeader("Authorization");
-        String jwtToken = null;
+        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
 
-        if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")
+        if (header != null && header.startsWith(BEARER_PREFIX)
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
-            jwtToken = requestTokenHeader.substring(7);
             try {
-                jwtTokenUtil.validateToken(jwtToken);
-
-                String principal;
-                List<String> roles = jwtTokenUtil.extractRoles(jwtToken);
-
-                if (jwtTokenUtil.isAnonymous(jwtToken)) {
-                    principal = jwtTokenUtil.extractAnonymousId(jwtToken);
-                } else {
-                    principal = jwtTokenUtil.extractUsername(jwtToken);
+                Claims claims = jwtUtil.parse(header.substring(BEARER_PREFIX.length()));
+                String principal = JwtUtil.principalOf(claims);
+                if (principal != null) {
+                    List<GrantedAuthority> authorities = JwtUtil.rolesOf(claims).stream()
+                            .distinct()
+                            .<GrantedAuthority>map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                            .toList();
+                    SecurityContextHolder.getContext().setAuthentication(
+                            new UsernamePasswordAuthenticationToken(principal, null, authorities));
                 }
-
-                Set<GrantedAuthority> authorities = new HashSet<>();
-                roles.stream().distinct().forEach(r -> authorities.add(new SimpleGrantedAuthority("ROLE_" + r)));
-
-                UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(
-                        principal, null, authorities);
-                SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
-            } catch (Exception e) {
-                logger.error("Unable to validate JWT Token", e);
+            } catch (JwtException | IllegalArgumentException e) {
+                logger.debug("Rejected JWT: " + e.getMessage());
             }
-        } else {
-            String exceptionMessage = "JWT Token non presente nell'header authorization o non inizia con \"Bearer\"";
-            logger.warn(exceptionMessage);
         }
         filterChain.doFilter(request, response);
     }
