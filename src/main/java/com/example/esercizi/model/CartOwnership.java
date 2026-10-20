@@ -1,6 +1,7 @@
 package com.example.esercizi.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -23,7 +24,8 @@ public class CartOwnership {
     @Column(name = "anonymous_id")
     private String anonymousId; // UUID for anonymous guests via JWT
 
-    @Column(name = "created_at")
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     public CartOwnership(Long id, Cart cart, User user, String anonymousId) {
@@ -31,7 +33,6 @@ public class CartOwnership {
         this.cart = cart;
         this.user = user;
         this.anonymousId = anonymousId;
-        this.createdAt = LocalDateTime.now();
     }
 
     public CartOwnership() {}

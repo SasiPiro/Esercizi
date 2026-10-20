@@ -2,7 +2,9 @@
 DROP TABLE IF EXISTS cart_ownership;
 DROP TABLE IF EXISTS cart_item;
 DROP TABLE IF EXISTS cart;
-DROP TABLE IF EXISTS user_app ;
+DROP TABLE IF EXISTS user_roles;
+DROP TABLE IF EXISTS roles;
+DROP TABLE IF EXISTS user_app;
 DROP TABLE IF EXISTS coupon;
 DROP TABLE IF EXISTS product;
 
@@ -72,11 +74,15 @@ CREATE TABLE cart_item (
 
 CREATE TABLE cart_ownership (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    cart_id BIGINT NOT NULL,
-    user_id BIGINT,
+    cart_id BIGINT NOT NULL UNIQUE,
+    user_id BIGINT UNIQUE,                 -- at most one open cart per user
+    anonymous_id VARCHAR(64) UNIQUE,       -- at most one open cart per guest
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_ownership_cart FOREIGN KEY (cart_id) REFERENCES cart(id) ON DELETE CASCADE,
-    CONSTRAINT fk_ownership_user FOREIGN KEY (user_id) REFERENCES user_app(id)
+    CONSTRAINT fk_ownership_user FOREIGN KEY (user_id) REFERENCES user_app(id),
+    -- exactly one owner: either a registered user or a guest
+    CONSTRAINT chk_ownership_single_owner CHECK ((user_id IS NULL) <> (anonymous_id IS NULL))
 );
 
 -- =============================================

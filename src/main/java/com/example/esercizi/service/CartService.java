@@ -178,20 +178,7 @@ public class CartService {
         Product product = productRepository.findByCode(productCode)
                 .orElseThrow(() -> ProductNotFoundException.forCode(productCode));
 
-        CartItem existing = cart.getItems().stream()
-                .filter(i -> i.getProduct().equals(product))
-                .findFirst()
-                .orElse(null);
-
-        if (existing != null) {
-            existing.setQuantity(existing.getQuantity() + quantity);
-        } else {
-            CartItem item = new CartItem();
-            item.setCart(cart);
-            item.setProduct(product);
-            item.setQuantity(quantity);
-            cart.getItems().add(item);
-        }
+        cart.addOrIncrement(product, quantity);
         Cart savedCart = cartRepository.save(cart);
         return cartMapper.toDto(savedCart, user, anonymousId);
     }

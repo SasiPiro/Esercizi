@@ -1,6 +1,7 @@
 package com.example.esercizi.model;
 
 import jakarta.persistence.*;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -13,16 +14,15 @@ public class Cart {
     // Bidirectional relationship: a cart has many items
     // mappedBy tells JPA that the mapping is managed by the "cart" field in CartItem
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<CartItem> items;
+    private List<CartItem> items = new ArrayList<>();
 
     @Column(name = "cart_status")
     @Enumerated(EnumType.STRING)
-    private CartStatus cartStatus;
+    private CartStatus cartStatus = CartStatus.TEMPORARY;
 
     public Cart(Long id, List<CartItem> items) {
         this.id = id;
-        this.items = items;
-        this.cartStatus = CartStatus.TEMPORARY;
+        this.items = items != null ? new ArrayList<>(items) : new ArrayList<>();
     }
 
     public Cart() {
@@ -57,5 +57,24 @@ public class Cart {
 
     public void setCartStatus(CartStatus cartStatus) {
         this.cartStatus = cartStatus;
+    }
+
+    /**
+     * Adds a product to the cart, or increments the quantity if the product is already present.
+     * Products are compared by id because Product does not override equals().
+     */
+    public void addOrIncrement(Product product, int quantity) {
+        items.stream()
+                .filter(i -> i.getProduct().getId().equals(product.getId()))
+                .findFirst()
+                .ifPresentOrElse(
+                        existing -> existing.setQuantity(existing.getQuantity() + quantity),
+                        () -> {
+                            CartItem item = new CartItem();
+                            item.setCart(this);
+                            item.setProduct(product);
+                            item.setQuantity(quantity);
+                            items.add(item);
+                        });
     }
 }
