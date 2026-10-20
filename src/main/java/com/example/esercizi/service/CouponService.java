@@ -82,7 +82,7 @@ public class CouponService {
                 .orElseThrow(() -> new PromotionNotFoundException(ERROR_PROMOTION_NOT_FOUND));
         entityManager.refresh(coupon); // the bulk UPDATE bypassed the persistence context
 
-        log.info("[COUPON_REDEEMED] code={} usage={}/{}",
+        log.info("[COUPON_REDEEMED] code={} usage={} limit={}",
                 coupon.getCode(), coupon.getCurrentUsage(), coupon.getUsageLimit());
         return coupon;
     }

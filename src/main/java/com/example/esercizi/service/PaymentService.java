@@ -8,6 +8,7 @@ import com.example.esercizi.exception.CartEmptyException;
 import com.example.esercizi.model.Cart;
 import com.example.esercizi.model.Coupon;
 import com.example.esercizi.repository.CartRepository;
+import org.slf4j.event.Level;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -42,7 +43,7 @@ public class PaymentService {
         this.timeService = timeService;
     }
 
-    @TrackPromotion
+    @TrackPromotion(level = Level.DEBUG) // previews are frequent: not a business event
     @Transactional // not readOnly: the first request of a principal may create its empty cart
     public CalculationResultDTO quote(String couponCode) {
         CartService.CurrentCart current = cartService.currentCart();

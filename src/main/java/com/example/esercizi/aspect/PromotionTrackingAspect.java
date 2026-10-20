@@ -8,8 +8,20 @@ import org.aspectj.lang.annotation.Aspect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StopWatch;
 
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * One {@code [PRICING]} line per tracked call, in the same key=value format as the rest
+ * of the application.
+ *
+ * <p>
+ * A failed call is logged here only as an outcome ({@code outcome=rejected}), at the
+ * annotation's level and without stack trace: the GlobalExceptionHandler is the single
+ * place that logs errors, so the same failure is not reported twice.
+ * </p>
+ */
 @Aspect
 @Component
 public class PromotionTrackingAspect {
@@ -21,45 +33,43 @@ public class PromotionTrackingAspect {
         this.authFacade = authFacade;
     }
 
-    @Around("@annotation(com.example.esercizi.aspect.TrackPromotion)")
-    public Object trackPromotionExecution(ProceedingJoinPoint joinPoint) throws Throwable {
+    @Around("@annotation(track)")
+    public Object trackPromotionExecution(ProceedingJoinPoint joinPoint, TrackPromotion track) throws Throwable {
+        String operation = joinPoint.getSignature().getName();
+        String principal = currentPrincipal();
+        long start = System.nanoTime();
 
-            String username = extractUserName();
-            StopWatch stopWatch = new StopWatch();
-            stopWatch.start();
-
-            try {
-                Object result = joinPoint.proceed();
-                stopWatch.stop();
-
-                if (result instanceof CalculationResultDTO audit) {
-                    log.info("[PROMOTION_TRACKING] user={} | init={} | final={} | saved={} (-{}%) | strategies={} | time_ms={}",
-                            // Retrieve user for logging
-                            username,
-                            audit.initialPrice(),
-                            audit.finalPrice(),
-                            audit.totalDiscountAmount(),
-                            String.format("%.2f", audit.getDiscountPercentage()),
-                            audit.appliedStrategies(),
-                            stopWatch.getTotalTimeMillis()
-                    );
-                }
-                return result;
-            } catch (Throwable ex) {
-                log.error("[PROMOTION_ERROR] user={} | method={} | error={} | time_ms={}",
-                        username,
-                        joinPoint.getSignature().getName(),
-                        ex.getMessage(),
-                        stopWatch.getTotalTimeMillis());
-                throw ex;
+        try {
+            Object result = joinPoint.proceed();
+            if (result instanceof CalculationResultDTO pricing) {
+                log.atLevel(track.level()).log(
+                        "[PRICING] operation={} outcome=success principal={} initial={} final={} saved={} "
+                                + "discountPct={} strategies={} coupon={} durationMs={}",
+                        operation, principal,
+                        pricing.initialPrice(), pricing.finalPrice(), pricing.totalDiscountAmount(),
+                        // Locale.ROOT: always "10.00", never "10,00" depending on the server locale
+                        String.format(Locale.ROOT, "%.2f", pricing.getDiscountPercentage()),
+                        pricing.appliedStrategies(), pricing.couponUsed(),
+                        elapsedMillis(start));
             }
+            return result;
+        } catch (Throwable ex) {
+            log.atLevel(track.level()).log(
+                    "[PRICING] operation={} outcome=rejected principal={} reason={} durationMs={}",
+                    operation, principal, ex.getClass().getSimpleName(), elapsedMillis(start));
+            throw ex;
+        }
     }
 
-    private String extractUserName() {
+    private static long elapsedMillis(long startNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+    }
+
+    private String currentPrincipal() {
         try {
             return authFacade.getCurrentUsername();
-        } catch (Exception e) {
-            return "GUEST";
+        } catch (RuntimeException e) {
+            return "anonymous";
         }
     }
 }

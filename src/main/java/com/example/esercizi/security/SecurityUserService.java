@@ -29,7 +29,6 @@ public class SecurityUserService implements UserDetailsService {
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 
-        // Try email first, then username
         User user = userRepository.findByUsernameWithRoles(username)
                         .orElseThrow(() -> new UsernameNotFoundException( "User not found: " + username)
                 );
@@ -49,7 +48,7 @@ public class SecurityUserService implements UserDetailsService {
     }
 
     /**
-     * Extracts all authorities (permissions + roles) from the user
+     * Maps the user's roles to authorities with the ROLE_ prefix
      */
     private Collection<? extends GrantedAuthority> getAuthorities(User user) {
         Set<GrantedAuthority> authorities = new HashSet<>();

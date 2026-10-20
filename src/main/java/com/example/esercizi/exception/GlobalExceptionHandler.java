@@ -1,5 +1,6 @@
 package com.example.esercizi.exception;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -64,6 +65,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createProblemDetail(ex, HttpStatus.CONFLICT, ERROR_COUPON_NOT_CUMULATIVE, TYPE_COUPON_NOT_CUMULATIVE);
     }
 
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ProblemDetail handleDuplicateResource(DuplicateResourceException ex) {
+        return createProblemDetail(ex, HttpStatus.CONFLICT, "Resource already exists", TYPE_DUPLICATE_RESOURCE);
+    }
+
     @ExceptionHandler(CartCheckoutConflictException.class)
     public ProblemDetail handleCheckoutConflict(CartCheckoutConflictException ex) {
         return createProblemDetail(ex, HttpStatus.CONFLICT, "Checkout conflict", TYPE_CHECKOUT_CONFLICT);
@@ -86,7 +92,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(AuthenticationException.class)
     public ProblemDetail handleAuthentication(AuthenticationException ex) {
-        log.warn("Authentication failed: {}", ex.getMessage());
+        // Already logged with the attempted username by AuthService (login) or not
+        // interesting (expired/invalid guest token): no second line here.
         // Generic message on purpose: do not reveal whether the username exists
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ERROR_INVALID_CREDENTIALS);
         problemDetail.setTitle("Unauthorized");
@@ -128,8 +135,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     // --- 3. CATCH-ALL ---
     @ExceptionHandler(Exception.class)
-    public ProblemDetail handleAllUncaughtException(Exception ex) {
-        log.error("UNHANDLED ERROR: ", ex);
+    public ProblemDetail handleAllUncaughtException(Exception ex, HttpServletRequest request) {
+        // The only ERROR with stack trace: a real bug or an infrastructure failure
+        log.error("[HTTP_SERVER_ERROR] status=500 method={} path={} exception={}",
+                request.getMethod(), request.getRequestURI(), ex.getClass().getName(), ex);
 
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
                 HttpStatus.INTERNAL_SERVER_ERROR,
@@ -144,7 +153,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     // HELPER METHOD
     private ProblemDetail createProblemDetail(Exception ex, HttpStatus status, String title, URI type) {
-        log.warn("{}: {}", title, ex.getMessage());
+        // 4xx = the client sent something the business rules reject: expected, not an
+        // application error. INFO without stack trace; WARN/ERROR stay meaningful.
+        log.info("[HTTP_CLIENT_ERROR] status={} title=\"{}\" detail=\"{}\"", status.value(), title, ex.getMessage());
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
         problemDetail.setTitle(title);
         problemDetail.setType(type);

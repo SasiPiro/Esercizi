@@ -41,6 +41,6 @@ public class CartCleanupJob {
         LocalDateTime cutoff = LocalDateTime.ofInstant(
                 timeService.now().minus(GUEST_CART_RETENTION), ZoneId.systemDefault());
         int deleted = ownershipRepository.deleteGuestCartsCreatedBefore(cutoff);
-        log.info("[CART_CLEANUP] deleted={} guest carts created before {}", deleted, cutoff);
+        log.info("[CART_CLEANUP] deleted={} createdBefore={}", deleted, cutoff);
     }
 }

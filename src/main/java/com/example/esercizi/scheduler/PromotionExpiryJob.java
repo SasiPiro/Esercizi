@@ -47,9 +47,9 @@ public class PromotionExpiryJob {
         Instant now = timeService.now();
         int expired = couponRepository.expireStale(CouponStatus.ACTIVE, CouponStatus.EXPIRED, now);
         if (expired > 0) {
-            log.info("[PROMOTION_LIFECYCLE] expired={} timestamp={}", expired, now);
+            log.info("[COUPON_EXPIRY] expired={} at={}", expired, now);
         } else {
-            log.debug("[PROMOTION_LIFECYCLE] nothing to expire at timestamp={}", now);
+            log.debug("[COUPON_EXPIRY] expired=0 at={}", now);
         }
     }
 }

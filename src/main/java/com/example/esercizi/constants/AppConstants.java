@@ -37,6 +37,7 @@ public final class AppConstants {
     public static final URI TYPE_MISSING_RESOURCE = URI.create(BASE_URL + "missing-resource");
     public static final URI TYPE_UNAUTHORIZED = URI.create(BASE_URL + "unauthorized");
     public static final URI TYPE_FORBIDDEN = URI.create(BASE_URL + "forbidden");
+    public static final URI TYPE_DUPLICATE_RESOURCE = URI.create(BASE_URL + "duplicate-resource");
     public static final URI TYPE_CHECKOUT_CONFLICT = URI.create(BASE_URL + "checkout-conflict");
 
     // Promotion duration

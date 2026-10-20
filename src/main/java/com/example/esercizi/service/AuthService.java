@@ -13,12 +13,11 @@ import com.example.esercizi.repository.RoleRepository;
 import com.example.esercizi.repository.UserRepository;
 import com.example.esercizi.security.JwtUtil;
 import org.slf4j.Logger;
-import java.util.Objects;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,32 +54,30 @@ public class AuthService {
          * Authenticate user using Spring Security and generate JWT token
          */
         public LoginResponseDTO login(LoginRequestDTO request) {
-                log.info("Login attempt for: {}", request.username());
-
                 // Delegate authentication to Spring Security
-                Authentication authentication = authenticationManager.authenticate(
-                                new UsernamePasswordAuthenticationToken(
-                                                request.username(),
-                                                request.password()));
+                Authentication authentication;
+                try {
+                        authentication = authenticationManager.authenticate(
+                                        new UsernamePasswordAuthenticationToken(request.username(), request.password()));
+                } catch (AuthenticationException ex) {
+                        // Logged here because only here the attempted username is known.
+                        // The exception handler turns it into a generic 401.
+                        log.warn("[AUTH_LOGIN] outcome=failure username={} reason={}",
+                                        request.username(), ex.getClass().getSimpleName());
+                        throw ex;
+                }
 
-                // Authentication successful, get email from principal
                 String username = authentication.getName();
 
-                log.debug("Authentication successful for: {}", username);
-
-                // Fetch user with roles and permissions for response DTO
+                // Fetch user with roles for the token and the response DTO
                 User user = userRepository.findByUsernameWithRoles(username)
                                 .orElseThrow(() -> new UserNotFoundException("User not found after authentication"));
 
-                // Generate JWT token
                 String token = jwtUtil.generateToken(user);
                 Long expiresIn = jwtUtil.getExpirationTime();
-
-                // Map user to DTO
                 UserResponseDTO userResponse = userMapper.toDTO(user);
 
-                log.info("Login successful for user: {} (ID: {})", user.getUsername(), user.getId());
-
+                log.info("[AUTH_LOGIN] outcome=success username={} userId={}", user.getUsername(), user.getId());
                 return new LoginResponseDTO(token, expiresIn, userResponse);
         }
 
@@ -88,12 +85,10 @@ public class AuthService {
          * Register new user with default CUSTOMER role
          */
         public UserResponseDTO register(RegisterRequestDTO request) {
-                log.info("Registration attempt for username: {}",
-                                request.username());
-
                 // Check if username already exists
                 if (userRepository.existsByUsername(request.username())) {
-                        log.warn("Registration failed: Username already exists: {}", request.username());
+                        log.info("[AUTH_REGISTER] outcome=rejected username={} reason=duplicate_username",
+                                        request.username());
                         throw new DuplicateResourceException("Username already exists");
                 }
 
@@ -112,7 +107,8 @@ public class AuthService {
                 // Save user
                 User savedUser = userRepository.save(user);
 
-                log.info("User registered successfully: {} (ID: {})", savedUser.getUsername(), savedUser.getId());
+                log.info("[AUTH_REGISTER] outcome=success username={} userId={}",
+                                savedUser.getUsername(), savedUser.getId());
 
                 return userMapper.toDTO(savedUser);
         }
