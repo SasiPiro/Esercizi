@@ -77,7 +77,7 @@ public class PaymentService {
         CalculationResultDTO result = pricingEngine.price(cart, current.user(), now, coupon);
 
         cart.setCartStatus(Cart.CartStatus.PURCHASED);
-        cartService.detachPurchasedCart(cart);
+        cartService.replacePurchasedCart(cart);
         // Next step: persist an Order with a price snapshot and publish an OrderPlaced event
         return result;
     }

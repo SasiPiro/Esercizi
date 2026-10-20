@@ -6,6 +6,7 @@ import com.example.esercizi.dto.RegisterRequestDTO;
 import com.example.esercizi.dto.UserResponseDTO;
 import com.example.esercizi.security.JwtUtil;
 import com.example.esercizi.service.AuthService;
+import com.example.esercizi.service.CartService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,10 +25,12 @@ public class AuthController {
 
     private final AuthService authService;
     private final JwtUtil jwtUtil;
+    private final CartService cartService;
 
-    public AuthController(AuthService authService, JwtUtil jwtUtil) {
+    public AuthController(AuthService authService, JwtUtil jwtUtil, CartService cartService) {
         this.authService = authService;
         this.jwtUtil = jwtUtil;
+        this.cartService = cartService;
     }
 
     /**
@@ -36,7 +39,9 @@ public class AuthController {
      */
     @PostMapping("/guest")
     public ResponseEntity<Map<String, Object>> guest() {
-        String token = jwtUtil.generateAnonymousToken(UUID.randomUUID().toString());
+        String anonymousId = UUID.randomUUID().toString();
+        cartService.createGuestCart(anonymousId);
+        String token = jwtUtil.generateAnonymousToken(anonymousId);
         return ResponseEntity.ok(Map.of("token", token, "type", "Bearer", "expiresIn", jwtUtil.getExpirationTime()));
     }
 

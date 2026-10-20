@@ -71,11 +71,19 @@ public class CartService {
     }
 
     /**
-     * Detaches a purchased cart from its owner, so the next request starts a new cart.
-     * The cart row itself is kept with status PURCHASED as a record of the purchase.
+     * Gives the owner of a purchased cart a fresh, empty cart in the same transaction.
+     * The purchased cart row is kept (status PURCHASED) as a record of the purchase.
+     * Swapping the cart on the existing ownership row means the owner is never left
+     * without a cart, so there is nothing to (re)create lazily after a checkout.
      */
-    public void detachPurchasedCart(Cart cart) {
-        ownershipRepository.findByCartId(cart.getId()).ifPresent(ownershipRepository::delete);
+    public void replacePurchasedCart(Cart purchased) {
+        ownershipRepository.findByCartId(purchased.getId()).ifPresent(ownership -> {
+            Cart fresh = new Cart();
+            if (ownership.getUser() != null) {
+                fresh.setCartStatus(Cart.CartStatus.ACTIVE);
+            }
+            ownership.setCart(cartRepository.save(fresh));
+        });
     }
 
     public Cart getCartEntity(String anonymousId, User user) {
@@ -83,9 +91,16 @@ public class CartService {
         // LOGGED IN USER
         if (user != null && user.getId() != null) {
             return ownershipRepository.findCartWithItemsByUserId(user.getId())
-                    .orElseGet(() -> createUserCart(user));
+                    .orElseGet(() -> {
+                        // First cart of this user: lock the user row so concurrent first
+                        // requests are serialized, then check again before creating.
+                        userRepository.lockById(user.getId());
+                        return ownershipRepository.findCartWithItemsByUserId(user.getId())
+                                .orElseGet(() -> createUserCart(user));
+                    });
         }
-        // GUEST
+        // GUEST: the cart is created when the guest token is issued (see createGuestCart),
+        // this lazy creation is only a fallback.
         if (anonymousId != null) {
             return ownershipRepository.findCartWithItemsByAnonymousId(anonymousId)
                     .orElseGet(() -> createGuestCart(anonymousId));
@@ -93,7 +108,11 @@ public class CartService {
         throw new MissingResourceException("User or AnonymousId must be provided");
     }
 
-    private Cart createGuestCart(String anonymousId) {
+    /**
+     * Creates the cart of a new guest. Called when the guest token is issued, i.e. before
+     * any concurrent request of that guest can exist, so it cannot race.
+     */
+    public Cart createGuestCart(String anonymousId) {
         Cart cart = cartRepository.save(new Cart());
 
         CartOwnership ownership = new CartOwnership();
@@ -116,6 +135,8 @@ public class CartService {
         String username = auth.getName();
         User user = userRepository.findByUsernameWithRoles(username)
                 .orElseThrow(() -> new UserNotFoundException(ERROR_USER_NOT_FOUND));
+        // Same lock as getCartEntity: a merge cannot race with the user's first cart creation
+        userRepository.lockById(user.getId());
 
         Optional<CartOwnership> guestOwnershipOpt = ownershipRepository.findByAnonymousId(anonymousId);
         Optional<CartOwnership> userOwnershipOpt = ownershipRepository.findByUser(user);
