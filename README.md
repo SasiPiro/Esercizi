@@ -4,7 +4,7 @@ An e-commerce backend built as a **single deployable Spring Boot application**, 
 
 It is one half of a pair. The same domain is also implemented as a distributed system in **[ecommerce-microservice](https://github.com/SasiPiro/ecommerce-microservice)**, which focuses on the problems that only exist once a system is split into services. See [Why two repositories](#why-two-repositories-monolith-vs-microservices).
 
-> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events; the application and its tests run on PostgreSQL with Flyway migrations; metrics are exported to Prometheus and catalog lookups are cached locally. It ships as one Docker image, runs with `docker compose up`, and every push runs the whole test suite in GitHub Actions.
+> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events; the application and its tests run on PostgreSQL with Flyway migrations; metrics are exported to Prometheus and product pages are served from a local cache. It ships as one Docker image, runs with `docker compose up`, and every push runs the whole test suite in GitHub Actions.
 
 ---
 
@@ -55,6 +55,7 @@ Each of these was a real bug in an earlier version of the code, reproduced with 
 | A client retrying after a timeout could buy twice | `Idempotency-Key` header; the unique constraint on the key is the real guard, and a request that loses the race answers with the winner's order | `OrderService.placeOrder` |
 | Ten concurrent retries of one checkout all answered 500 after 30 seconds (seen only on PostgreSQL) | The idempotent orchestration runs outside any transaction scope, so a checkout holds one pooled connection instead of two | `OrderService.placeOrder` |
 | Adding Spring Modulith started every scheduled job, even with scheduling disabled | `spring-modulith-moments`, whose auto-configuration declares `@EnableScheduling`, is excluded | `pom.xml` |
+| The product cache saved no query on the only path that used it (adding to the cart needs the managed entity, which Hibernate reloaded anyway), and held entities shared between threads | The cache holds immutable DTOs and serves the public product endpoint, where the second request runs no SQL; the cart reads the entity from the database | `ProductCatalog` |
 | A metric could count a checkout that rolled back | Business metrics are recorded only after the transaction commits | `AfterCommit` |
 | Logs mixed formats and logged business errors as ERROR | One `[EVENT] key=value` format, levels by meaning, a request id on every line | `RequestIdFilter`, `GlobalExceptionHandler` |
 
@@ -118,9 +119,9 @@ Both repositories implement an e-commerce backend on purpose. Seeing the same do
 *Impact:* a symmetric key is simpler and fast, and it is safe while the key never leaves the application. With many verifiers a shared secret would let any of them forge tokens; public-key verification avoids that and allows key rotation without redeploying services. The price is a new trust problem: services must accept identity headers only from the gateway.
 
 **7. Caching: a local cache instead of Redis.**
-*Here:* product lookups by code are cached in-process with Caffeine (`ProductRepository.findByCode`, 5 minutes, at most 1000 entries, unknown codes not cached, evicted on save).
+*Here:* `GET /api/v1/products/{code}` is served from an in-process Caffeine cache of immutable `ProductDTO` records (`ProductCatalog`, 5 minutes, at most 1000 entries, unknown codes not cached, evicted on save). The cart does not use it: adding an item needs the managed entity, and a cache there measured no saving.
 *There:* a Redis cache shared by the replicas of product-service.
-*Impact:* a local cache needs no network hop and no extra infrastructure. The limit is explicit: with several instances each has its own cache, so a product update reaches the others only when their entry expires. Acceptable for catalog data; never used for what must be exact, since prices at checkout are read with the cart from the database.
+*Impact:* a local cache needs no network hop and no extra infrastructure. The limit is explicit: with several instances each has its own cache, so a product update reaches the others only when their entry expires. Acceptable for a product page; never used for what must be exact, since prices at checkout are read with the cart from the database.
 
 **8. Failure handling and observability.**
 *Here:* a failure is an exception in one process: the transaction rolls back and `GlobalExceptionHandler` turns it into a problem detail. One request id in the logs and one Prometheus endpoint describe the whole system; business metrics (`shop_coupon_redeemed_total`, `shop_checkout_amount`) are recorded only after commit.
@@ -144,7 +145,7 @@ graph LR
     subgraph APP["ecommerce-monolith (one process)"]
         WEB["HTTP layer<br/>RequestIdFilter, JWT filter, problem details"]
         ID["identity<br/>users, JWT, guest sessions"]
-        CAT["catalog<br/>products, Caffeine cache"]
+        CAT["catalog<br/>products, cached product pages"]
         CART["cart<br/>guest / user carts, merge, cleanup job"]
         PRICING["pricing<br/>strategies, coupons, expiry job"]
         ORD["ordering<br/>checkout, orders, idempotency"]
@@ -156,6 +157,7 @@ graph LR
     Client --> WEB
     PROM -- "scrapes /actuator/prometheus" --> WEB
     WEB --> ID
+    WEB --> CAT
     WEB --> CART
     WEB --> ORD
     ORD --> CART
@@ -195,7 +197,8 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 
 ```
 src/main/java/com/ecommerce/monolith/
-├── catalog/          Product, ProductRepository (cached lookups by code)
+├── catalog/          Product, ProductDTO, ProductRepository
+│   └── internal/     ProductController, ProductCatalog (cached reads)
 ├── identity/         User, Role, AuthFacade, GuestSessionStarted
 │   └── internal/     AuthController, AuthService, JwtUtil, SecurityConfig
 ├── cart/             Cart, CartItem, CartService
@@ -286,6 +289,7 @@ curl -s localhost:8080/api/v1/orders -H "Authorization: Bearer $TOKEN"
 | POST | `/api/v1/auth/register` | public | Create a user with the `CUSTOMER` role |
 | POST | `/api/v1/auth/login` | public | Returns a JWT |
 | POST | `/api/v1/auth/guest` | public | Returns a guest JWT and creates the guest cart |
+| GET | `/api/v1/products/{code}` | public | One product and its base price (cached, 404 for an unknown code) |
 | GET | `/api/v1/cart` | user or guest | The caller's cart |
 | POST | `/api/v1/cart/items` + body `{"productCode","quantity"}` | user or guest | Add a product (1-99 units per line) |
 | PATCH | `/api/v1/cart/items/{productCode}` + body `{"quantity"}` | user or guest | Set the quantity of a line (1-99) |
@@ -326,7 +330,7 @@ Docker must be running: every Spring test context gets its own PostgreSQL contai
 | `SchedulerJobsTests` | Both jobs touch only what they must; a second trigger inside the lock window is skipped |
 | `JwtSecurityTests` | Weak or previously public secrets are rejected; a forged token gets 401 |
 | `CorsTests`, `ProductionDefaultsTests` | Dev conveniences are off without the `dev` profile |
-| `CatalogCacheTests` | The second lookup of a product code runs no SQL; saving a product evicts it; unknown codes are not cached |
+| `CatalogCacheTests` | The second request for a product runs no SQL; the cache holds DTOs, not entities; saving a product evicts it; unknown codes are not cached |
 | `MetricsTests` | `/actuator/prometheus` exposes HTTP histograms and the business metrics; a redemption that rolls back is not counted |
 | `LoggingTests`, `RequestIdTests` | Log format, levels, no duplicates, no secrets, request id propagation |
 
@@ -355,7 +359,7 @@ What I would change before running this in production, and why it is not done in
 
 - **Operational endpoints are public.** `/actuator/health` and `/actuator/prometheus` need no token, so the orchestrator and the Prometheus scraper can reach them; metrics reveal traffic and business volumes. *In production:* serve them on a separate management port (`management.server.port`) that only the cluster network can reach, or restrict them in the ingress.
 - **Failed notifications are not retried automatically.** A failed `OrderPlaced` delivery stays incomplete in `event_publication`: nothing is lost, but nothing resubmits it either. *In production:* resubmit incomplete publications on a schedule with `IncompleteEventPublications.resubmitIncompletePublicationsOlderThan(...)` (under a ShedLock lock, like the other jobs), or at least on startup with `spring.modulith.events.republish-outstanding-events-on-restart=true`, and alert on publications that stay incomplete.
-- **The product cache is per instance and holds entities.** With several instances, a product update reaches the others only after 5 minutes, and the cached values are detached `Product` entities shared between threads, which is safe only while no code modifies them. *In production, once products become editable:* cache immutable DTOs instead of entities, and evict across instances with an event, or move to a shared cache (Redis) if the stale window is not acceptable.
+- **The product cache is per instance.** With several instances, a product update reaches the others only when their entry expires (5 minutes); only this instance evicts at once. *In production, once products become editable:* evict across instances with an event, or move to a shared cache (Redis) if the stale window is not acceptable.
 
 ---
 
