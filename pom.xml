@@ -85,6 +85,15 @@
 			<groupId>io.micrometer</groupId>
 			<artifactId>micrometer-registry-prometheus</artifactId>
 		</dependency>
+		<!-- Local cache for catalog lookups -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-cache</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.github.ben-manes.caffeine</groupId>
+			<artifactId>caffeine</artifactId>
+		</dependency>
 		<!-- Event publication registry: events stored in the publishing transaction -->
 		<dependency>
 			<groupId>org.springframework.modulith</groupId>

@@ -18,6 +18,14 @@ spring:
   threads:
     virtual:
       enabled: true
+  # In-process cache for product lookups by code. Per instance: with several instances an
+  # update is visible elsewhere only after expiry, fine for catalog data, never for prices at
+  # checkout (read from the database). recordStats exposes hit/miss metrics.
+  cache:
+    type: caffeine
+    cache-names: products
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=5m,recordStats
 
 jwt:
   # No default on purpose: the application refuses to start without a strong secret.

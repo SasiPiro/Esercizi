@@ -4,7 +4,7 @@ An e-commerce backend built as a **single deployable Spring Boot application**, 
 
 It is one half of a pair. The same domain is also implemented as a distributed system in **[ecommerce-microservice](https://github.com/SasiPiro/ecommerce-microservice)**, which focuses on the problems that only exist once a system is split into services. See [Why two repositories](#why-two-repositories-monolith-vs-microservices).
 
-> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events; the application and its tests run on PostgreSQL with Flyway migrations. Next steps are metrics, a local catalog cache, Docker and CI (see [Planned next](#planned-next-and-why)).
+> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events; the application and its tests run on PostgreSQL with Flyway migrations; metrics are exported to Prometheus and catalog lookups are cached locally. Next steps are Docker and CI (see [Planned next](#planned-next-and-why)).
 
 ---
 
@@ -51,6 +51,8 @@ Each of these was a real bug in an earlier version of the code, reproduced with 
 | A purchase left only the closed cart, linked to current prices | An order keeps product codes and unit prices as they were at checkout | `Order`, `OrderLine` |
 | A client retrying after a timeout could buy twice | `Idempotency-Key` header; the unique constraint on the key is the real guard, and a request that loses the race answers with the winner's order | `OrderService.placeOrder` |
 | Logs mixed formats and logged business errors as ERROR | One `[EVENT] key=value` format, levels by meaning, a request id on every line | `RequestIdFilter`, `GlobalExceptionHandler` |
+
+**Why a local cache and not Redis here:** product lookups by code are cached in-process with Caffeine (`ProductRepository.findByCode`, 5 minutes, at most 1000 entries). In one process a local cache needs no network hop and no extra infrastructure; the microservices repository uses Redis because several replicas must share one cache. The limit is explicit: if the monolith runs as several instances, each has its own cache, so a product update is visible on the other instances only after the entry expires. That is acceptable for catalog data and never used for what must be exact: prices at checkout are read with the cart from the database.
 
 **Why HMAC (symmetric) JWTs here:** the same application signs and verifies tokens, so the secret never leaves it. In the microservices repository many services verify tokens, so there Keycloak signs with RS256 and services only hold the public key.
 
@@ -133,6 +135,7 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 | Scheduling | `@Scheduled` with ShedLock (JDBC provider) |
 | Modularity | Spring Modulith (verified module boundaries, domain events with a JPA publication registry) |
 | Observability | Spring Boot Actuator, Micrometer, Prometheus |
+| Caching | Spring Cache with Caffeine (local, per instance) |
 | Cross-cutting | Spring AOP (pricing audit), RFC 7807 problem details |
 | Tests | JUnit 5, MockMvc, AssertJ, Mockito, Hibernate statistics, Testcontainers (PostgreSQL) |
 
@@ -222,6 +225,7 @@ Docker must be running: every Spring test context gets its own PostgreSQL contai
 | `SchedulerJobsTests` | Both jobs touch only what they must; a second trigger inside the lock window is skipped |
 | `JwtSecurityTests` | Weak or previously public secrets are rejected; a forged token gets 401 |
 | `CorsTests`, `ProductionDefaultsTests` | Dev conveniences are off without the `dev` profile |
+| `CatalogCacheTests` | The second lookup of a product code runs no SQL; saving a product evicts it; unknown codes are not cached |
 | `MetricsTests` | `/actuator/prometheus` exposes HTTP histograms and the business metrics; a redemption that rolls back is not counted |
 | `LoggingTests`, `RequestIdTests` | Log format, levels, no duplicates, no secrets, request id propagation |
 
@@ -249,7 +253,6 @@ Each step strengthens what a monolith is good at, instead of imitating a distrib
 
 | Step | Why |
 |---|---|
-| **Metrics and a local catalog cache** | Business metrics (coupons redeemed, checkout totals) next to technical ones; a local cache is enough in one process, Redis is used where several replicas must share it |
 | **Docker and CI** | One image, one pipeline: the operational simplicity that is the point of a monolith |
 
 ---
