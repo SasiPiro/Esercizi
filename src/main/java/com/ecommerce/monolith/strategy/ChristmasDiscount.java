@@ -5,10 +5,6 @@ import com.ecommerce.monolith.dto.PromotionContext;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.time.Instant;
-
-import static com.ecommerce.monolith.constants.AppConstants.CHRISTMAS_PROMOTION_END;
-import static com.ecommerce.monolith.constants.AppConstants.CHRISTMAS_PROMOTION_START;
 
 @Component
 public class ChristmasDiscount implements PromotionStrategy {
@@ -20,13 +16,12 @@ public class ChristmasDiscount implements PromotionStrategy {
     }
 
     public boolean supports(PromotionContext context) {
-        Instant now = context.now();
-        return !now.isBefore(CHRISTMAS_PROMOTION_START) && !now.isAfter(CHRISTMAS_PROMOTION_END);
+        return promotionConfig.isActive(promotionConfig.getChristmas(), context.now());
     }
 
     @Override
     public BigDecimal getDiscountPercentage() {
-        return promotionConfig.getChristmasDiscount();
+        return promotionConfig.getChristmas().getDiscount();
     }
 
     @Override

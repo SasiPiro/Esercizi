@@ -205,7 +205,7 @@ Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 4
 | `SPRING_PROFILES_ACTIVE` | none | `dev` for local development only |
 | `LOGGING_STRUCTURED_FORMAT_CONSOLE` | unset | `ecs` or `logstash` for JSON log lines |
 
-Promotion percentages are in `application.yaml` under `promotions`.
+Promotion percentages and the seasonal windows (days of the year, repeated every year) are in `application.yaml` under `promotions`.
 
 ---
 

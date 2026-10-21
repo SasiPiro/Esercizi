@@ -37,8 +37,17 @@ jwt:
 
 promotions:
   vip-discount: 0.10
-  black-friday-discount: 0.15
-  christmas-discount: 0.20
+  # Seasonal windows: days of the year (MM-dd, both included) in this zone, every year.
+  # Black Friday moves every year: update its window here, no release needed.
+  zone: UTC
+  black-friday:
+    discount: 0.15
+    start: "11-25"
+    end: "11-27"
+  christmas:
+    discount: 0.20
+    start: "12-20"
+    end: "12-26"
 
 app:
   cors:

@@ -1,7 +1,6 @@
 package com.ecommerce.monolith.constants;
 
 import java.net.URI;
-import java.time.Instant;
 
 public final class AppConstants {
 
@@ -34,11 +33,5 @@ public final class AppConstants {
     public static final URI TYPE_FORBIDDEN = URI.create(BASE_URL + "forbidden");
     public static final URI TYPE_DUPLICATE_RESOURCE = URI.create(BASE_URL + "duplicate-resource");
     public static final URI TYPE_CHECKOUT_CONFLICT = URI.create(BASE_URL + "checkout-conflict");
-
-    // Promotion duration
-    public static final Instant BLACKFRIDAY_PROMOTION_START = Instant.parse("2026-11-25T00:00:00Z");
-    public static final Instant BLACKFRIDAY_PROMOTION_END = Instant.parse("2026-11-27T23:59:59Z");
-    public static final Instant CHRISTMAS_PROMOTION_START = Instant.parse("2026-12-20T00:00:00Z");
-    public static final Instant CHRISTMAS_PROMOTION_END = Instant.parse("2026-12-26T23:59:59Z");
 
 }

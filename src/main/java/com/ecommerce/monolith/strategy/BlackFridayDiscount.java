@@ -5,10 +5,6 @@ import com.ecommerce.monolith.dto.PromotionContext;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.time.Instant;
-
-import static com.ecommerce.monolith.constants.AppConstants.BLACKFRIDAY_PROMOTION_END;
-import static com.ecommerce.monolith.constants.AppConstants.BLACKFRIDAY_PROMOTION_START;
 
 @Component
 public class BlackFridayDiscount implements PromotionStrategy {
@@ -20,13 +16,12 @@ public class BlackFridayDiscount implements PromotionStrategy {
     }
 
     public boolean supports(PromotionContext promotionContext) {
-        Instant now = promotionContext.now();
-        return !now.isBefore(BLACKFRIDAY_PROMOTION_START) && !now.isAfter(BLACKFRIDAY_PROMOTION_END);
+        return promotionConfig.isActive(promotionConfig.getBlackFriday(), promotionContext.now());
     }
 
     @Override
     public BigDecimal getDiscountPercentage() {
-        return promotionConfig.getBlackFridayDiscount();
+        return promotionConfig.getBlackFriday().getDiscount();
     }
 
     @Override
