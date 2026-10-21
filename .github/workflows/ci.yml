@@ -1,0 +1,17 @@
+# One workflow for one artifact: every push and pull request runs all tests,
+# and the default branch also builds the image.
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: ./mvnw -B verify          # Testcontainers works: runners have Docker
+      - if: github.ref == 'refs/heads/master'
+        run: docker build -t ghcr.io/${{ github.repository_owner }}/ecommerce-monolith:${{ github.sha }} .

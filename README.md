@@ -4,7 +4,7 @@ An e-commerce backend built as a **single deployable Spring Boot application**, 
 
 It is one half of a pair. The same domain is also implemented as a distributed system in **[ecommerce-microservice](https://github.com/SasiPiro/ecommerce-microservice)**, which focuses on the problems that only exist once a system is split into services. See [Why two repositories](#why-two-repositories-monolith-vs-microservices).
 
-> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events; the application and its tests run on PostgreSQL with Flyway migrations; metrics are exported to Prometheus and catalog lookups are cached locally. Next steps are Docker and CI (see [Planned next](#planned-next-and-why)).
+> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events; the application and its tests run on PostgreSQL with Flyway migrations; metrics are exported to Prometheus and catalog lookups are cached locally. It ships as one Docker image, runs with `docker compose up`, and every push runs the whole test suite in GitHub Actions.
 
 ---
 
@@ -19,7 +19,6 @@ It is one half of a pair. The same domain is also implemented as a distributed s
 - [API overview](#api-overview)
 - [Testing](#testing)
 - [Configuration](#configuration)
-- [Planned next, and why](#planned-next-and-why)
 
 ---
 
@@ -138,6 +137,7 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 | Caching | Spring Cache with Caffeine (local, per instance) |
 | Cross-cutting | Spring AOP (pricing audit), RFC 7807 problem details |
 | Tests | JUnit 5, MockMvc, AssertJ, Mockito, Hibernate statistics, Testcontainers (PostgreSQL) |
+| Delivery | Multi-stage Dockerfile, Docker Compose, GitHub Actions |
 
 ---
 
@@ -220,6 +220,8 @@ Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 4
 ./mvnw test
 ```
 
+**Continuous integration:** `.github/workflows/ci.yml` runs `./mvnw -B verify` on every push and pull request (GitHub runners have Docker, so Testcontainers works there too) and builds the image on `master`. One workflow for one artifact, where the microservices repository needs one per service.
+
 Docker must be running: every Spring test context gets its own PostgreSQL container, so concurrency tests prove what the real database does (row locks, conditional updates, unique constraints), not what an in-memory substitute does.
 
 | Test class | What it proves |
@@ -253,16 +255,6 @@ Docker must be running: every Spring test context gets its own PostgreSQL contai
 | `LOGGING_STRUCTURED_FORMAT_CONSOLE` | unset | `ecs` or `logstash` for JSON log lines |
 
 Promotion percentages and the seasonal windows (days of the year, repeated every year) are in `application.yaml` under `promotions`.
-
----
-
-## Planned next, and why
-
-Each step strengthens what a monolith is good at, instead of imitating a distributed system.
-
-| Step | Why |
-|---|---|
-| **Docker and CI** | One image, one pipeline: the operational simplicity that is the point of a monolith |
 
 ---
 
