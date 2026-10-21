@@ -4,7 +4,7 @@ An e-commerce backend built as a **single deployable Spring Boot application**, 
 
 It is one half of a pair. The same domain is also implemented as a distributed system in **[ecommerce-microservice](https://github.com/SasiPiro/ecommerce-microservice)**, which focuses on the problems that only exist once a system is split into services. See [Why two repositories](#why-two-repositories-monolith-vs-microservices).
 
-> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests. Next steps are orders with price snapshots, explicit modules with Spring Modulith and PostgreSQL with Testcontainers (see [Planned next](#planned-next-and-why)).
+> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent. Next steps are explicit modules with Spring Modulith and PostgreSQL with Testcontainers (see [Planned next](#planned-next-and-why)).
 
 ---
 
@@ -28,7 +28,7 @@ It is one half of a pair. The same domain is also implemented as a distributed s
 - **Guest and registered shoppers.** A guest gets a signed token and a cart immediately; after logging in, the guest cart is merged into the user cart (quantities added, never lost).
 - **Pricing engine.** Automatic promotions as pluggable strategies (VIP, Black Friday, Christmas) combined with coupon codes, with business rules (seasonal promotions are not cumulative with coupons, total discount capped at 100%).
 - **Coupons with usage limits.** Each coupon has a usage limit and an expiry date; the last use can never be sold twice, even under concurrent checkouts.
-- **Checkout.** A read-only quote (`GET /checkout/quote`) and a confirmation (`POST /checkout`) that prices the cart on the server, redeems the coupon and closes the cart in one transaction.
+- **Checkout and orders.** A read-only quote (`GET /checkout/quote`) and a confirmation (`POST /checkout`) that prices the cart on the server, redeems the coupon, closes the cart and records an order with a price snapshot in one transaction. An `Idempotency-Key` header makes a retried checkout return the same order instead of buying twice.
 - **Scheduled jobs.** Coupon expiry every minute and cleanup of abandoned guest carts every night, safe to run with several instances.
 
 ---
@@ -46,6 +46,8 @@ Each of these was a real bug in an earlier version of the code, reproduced with 
 | Jobs loaded rows, chunked them and saved them from threads | One set-based SQL statement per job | `PromotionExpiryJob`, `CartCleanupJob` |
 | Every instance ran every job | ShedLock: one execution per window across instances, timed by the database clock | `SchedulingConfig` |
 | A JWT secret was committed with a default value | No default; startup fails without a strong secret | `JwtUtil` |
+| A purchase left only the closed cart, linked to current prices | An order keeps product codes and unit prices as they were at checkout | `Order`, `OrderLine` |
+| A client retrying after a timeout could buy twice | `Idempotency-Key` header; the unique constraint on the key is the real guard, and a request that loses the race answers with the winner's order | `OrderService.placeOrder` |
 | Logs mixed formats and logged business errors as ERROR | One `[EVENT] key=value` format, levels by meaning, a request id on every line | `RequestIdFilter`, `GlobalExceptionHandler` |
 
 **Why HMAC (symmetric) JWTs here:** the same application signs and verifies tokens, so the secret never leaves it. In the microservices repository many services verify tokens, so there Keycloak signs with RS256 and services only hold the public key.
@@ -106,7 +108,8 @@ The code is currently organized by technical layer (`controller`, `service`, `re
 2. Atomically move the cart from `ACTIVE` to `CHECKOUT` (a double-submitted checkout gets 409).
 3. Check the coupon combination rule, then redeem the coupon with a conditional update.
 4. Price the cart on the server: base total, applied strategies, coupon, 100% cap.
-5. Mark the cart `PURCHASED` and give the owner a fresh cart.
+5. Record the order with a snapshot of the lines and prices; its idempotency key is unique.
+6. Mark the cart `PURCHASED` and give the owner a fresh cart.
 
 If any step fails, the whole transaction rolls back, coupon use included. In the microservices repository the equivalent flow needs a saga.
 
@@ -153,8 +156,12 @@ curl -s -X POST localhost:8080/api/v1/cart/items -H "Authorization: Bearer $TOKE
 # 3. Preview the total with a coupon (does not consume it)
 curl -s "localhost:8080/api/v1/checkout/quote?couponCode=FLASH50" -H "Authorization: Bearer $TOKEN"
 
-# 4. Confirm
-curl -s -X POST "localhost:8080/api/v1/checkout?couponCode=FLASH50" -H "Authorization: Bearer $TOKEN"
+# 4. Confirm: one key per checkout attempt, sent again unchanged if the client retries
+curl -s -X POST "localhost:8080/api/v1/checkout?couponCode=FLASH50" -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)"
+
+# 5. Order history
+curl -s localhost:8080/api/v1/orders -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -172,11 +179,11 @@ curl -s -X POST "localhost:8080/api/v1/checkout?couponCode=FLASH50" -H "Authoriz
 | DELETE | `/api/v1/cart/items/{productCode}` | user or guest | Remove a product |
 | POST | `/api/v1/cart/merge` + header `X-Guest-Token` | user | Merge the guest cart into the user cart |
 | GET | `/api/v1/checkout/quote?couponCode=` | user or guest | Price preview, never redeems the coupon |
-| POST | `/api/v1/checkout?couponCode=` | user or guest | Confirm the purchase and record the order |
+| POST | `/api/v1/checkout?couponCode=` + header `Idempotency-Key` | user or guest | Confirm the purchase: 201 with the order and its `Location`; 200 with the same order when the key is replayed |
 | GET | `/api/v1/orders` | user or guest | The caller's orders, newest first |
 | GET | `/api/v1/orders/{id}` | user or guest | One of the caller's orders (404 for anyone else's) |
 
-Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 400 validation, 401 authentication, 403 authorization, 404 not found (also for another shopper's order), 409 conflicts (duplicate username, concurrent checkout, non-cumulative coupon), 410 expired coupon. Every response carries an `X-Request-Id` header, also printed on every log line of that request.
+Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 400 validation, 401 authentication, 403 authorization, 404 not found (also for another shopper's order), 409 conflicts (duplicate username, concurrent checkout, non-cumulative coupon, idempotency key used by another shopper), 410 expired coupon. Every response carries an `X-Request-Id` header, also printed on every log line of that request.
 
 ---
 
@@ -190,7 +197,7 @@ Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 4
 |---|---|
 | `CheckoutFlowTests` | Login, guest cart, server-side pricing (a tampered body is ignored), coupons, merge |
 | `CheckoutFlowTests.lastCouponUse...` | 20 virtual threads race for the last coupon use: exactly one wins |
-| `OrderTests` | A checkout records an order whose prices do not change with the catalog; orders are visible only to their owner |
+| `OrderTests` | A checkout records an order whose prices do not change with the catalog; the same key twice, or ten times concurrently, gives one order and one coupon use; orders are visible only to their owner |
 | `CartConcurrencyTests` | 16 concurrent first requests of a new user: all 200, one cart |
 | `CartQueryCountTests` | Reading a cart costs the same number of SQL statements with 1 or 4 products |
 | `SchedulerJobsTests` | Both jobs touch only what they must; a second trigger inside the lock window is skipped |
@@ -220,8 +227,6 @@ Each step strengthens what a monolith is good at, instead of imitating a distrib
 
 | Step | Why |
 |---|---|
-| **Orders with a price snapshot** | Today a purchase leaves only the closed cart, linked to current product prices; an order must keep what was sold and at what price, for invoices, refunds and disputes |
-| **Idempotent checkout** (`Idempotency-Key`) | A client that times out and retries must not buy twice; a unique constraint is the real guard |
 | **Modules with Spring Modulith** | The main risk of a monolith is erosion, not performance: module boundaries become a test that fails, and modules talk through in-process domain events with a publication registry (the in-process counterpart of the outbox used in the microservices repository) |
 | **PostgreSQL, Flyway, Testcontainers** | Correctness here relies on database behavior (conditional updates, row locks, constraints): the concurrency tests prove something only on the real database |
 | **Metrics and a local catalog cache** | Business metrics (coupons redeemed, checkout totals) next to technical ones; a local cache is enough in one process, Redis is used where several replicas must share it |

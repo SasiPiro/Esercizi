@@ -1,6 +1,7 @@
 package com.ecommerce.monolith.service;
 
 import com.ecommerce.monolith.dto.OrderDTO;
+import com.ecommerce.monolith.exception.IdempotencyKeyConflictException;
 import com.ecommerce.monolith.exception.OrderNotFoundException;
 import com.ecommerce.monolith.facade.AuthFacade;
 import com.ecommerce.monolith.mapper.OrderMapper;
@@ -9,16 +10,18 @@ import com.ecommerce.monolith.model.User;
 import com.ecommerce.monolith.repository.OrderRepository;
 import com.ecommerce.monolith.repository.UserRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 import static com.ecommerce.monolith.constants.AppConstants.ERROR_ORDER_NOT_FOUND;
 
 /**
- * Order history of the authenticated principal (user or guest). Every lookup is scoped to
- * the caller: another principal's order is reported as not found, not as forbidden, so
- * order ids cannot be probed.
+ * Orders of the authenticated principal (user or guest): idempotent checkout and history.
+ * Every lookup is scoped to the caller: another principal's order is reported as not found,
+ * not as forbidden, so order ids cannot be probed.
  */
 @Service
 @Transactional(readOnly = true)
@@ -28,13 +31,61 @@ public class OrderService {
     private final UserRepository userRepository;
     private final AuthFacade authFacade;
     private final OrderMapper orderMapper;
+    private final PaymentService paymentService;
 
     public OrderService(OrderRepository orderRepository, UserRepository userRepository,
-            AuthFacade authFacade, OrderMapper orderMapper) {
+            AuthFacade authFacade, OrderMapper orderMapper, PaymentService paymentService) {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.authFacade = authFacade;
         this.orderMapper = orderMapper;
+        this.paymentService = paymentService;
+    }
+
+    /** The order and whether this call created it ({@code false}: a replay of the same key). */
+    public record PlacedOrder(OrderDTO order, boolean created) {
+    }
+
+    /**
+     * Places an order for the caller's cart, at most once per idempotency key.
+     *
+     * <ol>
+     * <li>If the caller already placed an order with this key, it is returned and nothing
+     * else happens: a client that timed out and retries does not buy twice.</li>
+     * <li>Otherwise the checkout runs and creates the order in one transaction.</li>
+     * <li>If two requests with the same key race, only one can commit. The other fails, on the
+     * unique key, on the cart claim, or because it found the fresh empty cart the winner left
+     * behind; whatever the reason, it answers with the winner's order.</li>
+     * </ol>
+     * No transaction here: the checkout runs in its own, so after a lost race the lookup
+     * sees the order the winner committed.
+     *
+     * @throws IdempotencyKeyConflictException if the key was used by another principal
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public PlacedOrder placeOrder(String idempotencyKey, String couponCode) {
+        Optional<OrderDTO> previous = findPlacedWith(idempotencyKey);
+        if (previous.isPresent()) {
+            return new PlacedOrder(previous.get(), false);
+        }
+        try {
+            return new PlacedOrder(paymentService.placeOrder(idempotencyKey, couponCode), true);
+        } catch (RuntimeException failure) {
+            // Not a lost race when no order has this key: then the failure is the answer
+            return findPlacedWith(idempotencyKey)
+                    .map(winner -> new PlacedOrder(winner, false))
+                    .orElseThrow(() -> failure);
+        }
+    }
+
+    private Optional<OrderDTO> findPlacedWith(String idempotencyKey) {
+        Owner owner = currentOwner();
+        return orderRepository.findByIdempotencyKey(idempotencyKey).map(order -> {
+            if (!owner.owns(order)) {
+                throw new IdempotencyKeyConflictException("Idempotency key already used: generate a new one");
+            }
+            return orderMapper.toDto(order);
+        });
     }
 
     /** The caller's orders, newest first. */

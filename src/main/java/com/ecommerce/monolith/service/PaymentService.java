@@ -3,11 +3,13 @@ package com.ecommerce.monolith.service;
 import com.ecommerce.monolith.aspect.TrackPromotion;
 import com.ecommerce.monolith.constants.AppConstants;
 import com.ecommerce.monolith.dto.CalculationResultDTO;
+import com.ecommerce.monolith.dto.OrderDTO;
 import com.ecommerce.monolith.exception.CartCheckoutConflictException;
 import com.ecommerce.monolith.exception.CartEmptyException;
 import com.ecommerce.monolith.model.Cart;
 import com.ecommerce.monolith.model.CartItem;
 import com.ecommerce.monolith.model.Coupon;
+import com.ecommerce.monolith.mapper.OrderMapper;
 import com.ecommerce.monolith.model.Order;
 import com.ecommerce.monolith.repository.CartRepository;
 import com.ecommerce.monolith.repository.OrderRepository;
@@ -18,17 +20,17 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * Checkout flow, split in two operations:
  * <ul>
  * <li>{@link #quote(String)}: read-only preview of the total. Never consumes a coupon.</li>
- * <li>{@link #placeOrder(String)}: confirms the purchase, redeems the coupon, closes the cart and
- * records an {@link Order} with a snapshot of what was sold and at what price.</li>
+ * <li>{@link #placeOrder(String, String)}: confirms the purchase, redeems the coupon, closes the
+ * cart and records an {@link Order} with a snapshot of what was sold and at what price.</li>
  * </ul>
  * In both cases the cart is loaded from the database for the authenticated principal:
- * the client never sends items or prices.
+ * the client never sends items or prices. Replaying a checkout with the same idempotency
+ * key is handled by {@link OrderService#placeOrder(String, String)}, which calls this.
  */
 @Service
 public class PaymentService {
@@ -39,16 +41,18 @@ public class PaymentService {
     private final PricingEngine pricingEngine;
     private final TimeService timeService;
     private final OrderRepository orderRepository;
+    private final OrderMapper orderMapper;
 
     public PaymentService(CartService cartService, CartRepository cartRepository,
             CouponService couponService, PricingEngine pricingEngine, TimeService timeService,
-            OrderRepository orderRepository) {
+            OrderRepository orderRepository, OrderMapper orderMapper) {
         this.cartService = cartService;
         this.cartRepository = cartRepository;
         this.couponService = couponService;
         this.pricingEngine = pricingEngine;
         this.timeService = timeService;
         this.orderRepository = orderRepository;
+        this.orderMapper = orderMapper;
     }
 
     @TrackPromotion(level = Level.DEBUG) // previews are frequent: not a business event
@@ -61,9 +65,13 @@ public class PaymentService {
         return pricingEngine.price(current.cart(), current.user(), timeService.now(), coupon);
     }
 
+    /**
+     * @throws org.springframework.dao.DataIntegrityViolationException if an order with this
+     *         idempotency key already exists (unique constraint): nothing is redeemed or closed
+     */
     @TrackPromotion
     @Transactional
-    public CalculationResultDTO placeOrder(String couponCode) {
+    public OrderDTO placeOrder(String idempotencyKey, String couponCode) {
         CartService.CurrentCart current = cartService.currentCart();
         Cart cart = current.cart();
         Instant now = timeService.now();
@@ -85,11 +93,11 @@ public class PaymentService {
 
         CalculationResultDTO result = pricingEngine.price(cart, current.user(), now, coupon);
         // Same transaction as the coupon redemption: no order without its redemption, and vice versa
-        recordOrder(UUID.randomUUID().toString(), current, result, now);
+        Order order = recordOrder(idempotencyKey, current, result, now);
 
         cart.setCartStatus(Cart.CartStatus.PURCHASED);
         cartService.replacePurchasedCart(cart);
-        return result;
+        return orderMapper.toDto(order);
     }
 
     private Order recordOrder(String idempotencyKey, CartService.CurrentCart current,

@@ -1,8 +1,10 @@
 package com.ecommerce.monolith;
 
+import com.ecommerce.monolith.model.Coupon;
 import com.ecommerce.monolith.model.Order;
 import com.ecommerce.monolith.model.OrderLine;
 import com.ecommerce.monolith.model.Product;
+import com.ecommerce.monolith.repository.CouponRepository;
 import com.ecommerce.monolith.repository.OrderRepository;
 import com.ecommerce.monolith.repository.ProductRepository;
 import com.ecommerce.monolith.security.JwtUtil;
@@ -17,11 +19,18 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
@@ -46,6 +55,7 @@ class OrderTests {
     @Autowired MockMvc mvc;
     @Autowired OrderRepository orderRepository;
     @Autowired ProductRepository productRepository;
+    @Autowired CouponRepository couponRepository;
     @Autowired JwtUtil jwtUtil;
 
     @MockitoBean TimeService timeService;
@@ -98,10 +108,94 @@ class OrderTests {
     @Test
     void aRejectedCheckoutLeavesNoOrder() throws Exception {
         String guest = guestToken();
-        mvc.perform(post("/api/v1/checkout").header("Authorization", "Bearer " + guest))
+        mvc.perform(post("/api/v1/checkout").header("Idempotency-Key", UUID.randomUUID().toString()).header("Authorization", "Bearer " + guest))
                 .andExpect(status().isBadRequest()); // empty cart
 
         assertThat(orderRepository.findByAnonymousIdOrderByPlacedAtDescIdDesc(anonymousIdOf(guest))).isEmpty();
+    }
+
+    // ---------------------------------------------------------------- idempotency
+
+    @Test
+    void theSameKeyTwiceReturnsTheSameOrderAndRedeemsTheCouponOnce() throws Exception {
+        String coupon = newCoupon(5);
+        String guest = guestToken();
+        addItem(guest, "P001", 2); // 21.00, 10% off = 18.90
+        String key = UUID.randomUUID().toString();
+
+        MvcResult first = checkout(guest, key, coupon)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.finalPrice").value(18.90))
+                .andExpect(jsonPath("$.couponUsed").value(coupon))
+                .andReturn();
+        long orderId = ((Number) JsonPath.read(first.getResponse().getContentAsString(), "$.id")).longValue();
+        assertThat(first.getResponse().getHeader("Location")).endsWith("/api/v1/orders/" + orderId);
+
+        // The client timed out and retries: same order, nothing bought or redeemed again
+        checkout(guest, key, coupon)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(orderId))
+                .andExpect(jsonPath("$.finalPrice").value(18.90));
+
+        assertThat(usage(coupon)).isEqualTo(1);
+        assertThat(orderRepository.findByAnonymousIdOrderByPlacedAtDescIdDesc(anonymousIdOf(guest))).hasSize(1);
+    }
+
+    @Test
+    void concurrentRequestsWithTheSameKeyCreateOneOrder() throws Exception {
+        String coupon = newCoupon(50);
+        String guest = guestToken();
+        addItem(guest, "P003", 4);
+        String key = UUID.randomUUID().toString();
+
+        int requests = 10;
+        CountDownLatch start = new CountDownLatch(1);
+        Map<Integer, Integer> statuses = new ConcurrentHashMap<>();
+        Set<Object> orderIds = ConcurrentHashMap.newKeySet();
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < requests; i++) {
+                pool.submit(() -> {
+                    start.await();
+                    var response = checkout(guest, key, coupon).andReturn().getResponse();
+                    statuses.merge(response.getStatus(), 1, Integer::sum);
+                    if (response.getStatus() < 300) {
+                        orderIds.add(JsonPath.read(response.getContentAsString(), "$.id"));
+                    }
+                    return null;
+                });
+            }
+            start.countDown();
+        }
+
+        assertThat(statuses).as("HTTP status -> count").containsOnlyKeys(200, 201).containsEntry(201, 1);
+        assertThat(orderIds).hasSize(1);
+        assertThat(orderRepository.findByAnonymousIdOrderByPlacedAtDescIdDesc(anonymousIdOf(guest))).hasSize(1);
+        assertThat(usage(coupon)).isEqualTo(1);
+    }
+
+    @Test
+    void checkoutRequiresAnIdempotencyKey() throws Exception {
+        String guest = guestToken();
+        addItem(guest, "P001", 1);
+        mvc.perform(post("/api/v1/checkout").header("Authorization", "Bearer " + guest))
+                .andExpect(status().isBadRequest());
+        checkout(guest, "k".repeat(65), null).andExpect(status().isBadRequest());
+        assertThat(orderRepository.findByAnonymousIdOrderByPlacedAtDescIdDesc(anonymousIdOf(guest))).isEmpty();
+    }
+
+    @Test
+    void aKeyUsedByAnotherShopperIsRejected() throws Exception {
+        String key = UUID.randomUUID().toString();
+        String first = guestToken();
+        addItem(first, "P001", 1);
+        checkout(first, key, null).andExpect(status().isCreated());
+
+        String second = guestToken();
+        addItem(second, "P001", 1);
+        checkout(second, key, null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.id").doesNotExist());
+        assertThat(orderRepository.findByAnonymousIdOrderByPlacedAtDescIdDesc(anonymousIdOf(second))).isEmpty();
     }
 
     // ---------------------------------------------------------------- history
@@ -160,8 +254,27 @@ class OrderTests {
     // ---------------------------------------------------------------- helpers
 
     private void checkout(String token) throws Exception {
-        mvc.perform(post("/api/v1/checkout").header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/checkout").header("Idempotency-Key", UUID.randomUUID().toString()).header("Authorization", "Bearer " + token))
+                .andExpect(status().isCreated());
+    }
+
+    private ResultActions checkout(String token, String idempotencyKey, String couponCode) throws Exception {
+        var request = post("/api/v1/checkout").header("Authorization", "Bearer " + token)
+                .header("Idempotency-Key", idempotencyKey);
+        return mvc.perform(couponCode == null ? request : request.param("couponCode", couponCode));
+    }
+
+    private String newCoupon(int usageLimit) {
+        String code = "I" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        couponRepository.save(new Coupon(code, "test", new BigDecimal("0.1000"), usageLimit,
+                Instant.parse("2030-01-01T00:00:00Z")));
+        return code;
+    }
+
+    private int usage(String code) {
+        return couponRepository.findAll().stream()
+                .filter(c -> c.getCode().equals(code))
+                .findFirst().orElseThrow().getCurrentUsage();
     }
 
     private String newProduct(String price) {

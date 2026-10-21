@@ -1,6 +1,6 @@
 package com.ecommerce.monolith.aspect;
 
-import com.ecommerce.monolith.dto.CalculationResultDTO;
+import com.ecommerce.monolith.dto.PricedTotal;
 import com.ecommerce.monolith.facade.AuthFacade;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -41,7 +41,7 @@ public class PromotionTrackingAspect {
 
         try {
             Object result = joinPoint.proceed();
-            if (result instanceof CalculationResultDTO pricing) {
+            if (result instanceof PricedTotal pricing) {
                 log.atLevel(track.level()).log(
                         "[PRICING] operation={} outcome=success principal={} initial={} final={} saved={} "
                                 + "discountPct={} strategies={} coupon={} durationMs={}",

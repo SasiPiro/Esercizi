@@ -29,6 +29,16 @@ class CorsTests {
     }
 
     @Test
+    void checkoutPreflightAllowsTheIdempotencyKeyHeader() throws Exception {
+        mvc.perform(options("/api/v1/checkout")
+                        .header("Origin", "http://localhost:3000")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "Authorization, Idempotency-Key"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"));
+    }
+
+    @Test
     void preflightFromAnyOtherOriginIsRejected() throws Exception {
         mvc.perform(options("/api/v1/cart")
                         .header("Origin", "https://evil.example")

@@ -13,6 +13,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findWithLinesById(Long id);
 
     @EntityGraph(attributePaths = "lines")
+    Optional<Order> findByIdempotencyKey(String idempotencyKey);
+
+    @EntityGraph(attributePaths = "lines")
     List<Order> findByUserIdOrderByPlacedAtDescIdDesc(Long userId);
 
     @EntityGraph(attributePaths = "lines")

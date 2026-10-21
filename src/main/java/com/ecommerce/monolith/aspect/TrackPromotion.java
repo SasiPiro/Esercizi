@@ -5,7 +5,8 @@ import org.slf4j.event.Level;
 import java.lang.annotation.*;
 
 /**
- * Logs one {@code [PRICING]} line per call of a method returning a pricing result:
+ * Logs one {@code [PRICING]} line per call of a method returning a pricing result
+ * ({@link com.ecommerce.monolith.dto.PricedTotal}: a quote or a placed order):
  * outcome, prices, applied promotions and duration.
  */
 @Target(ElementType.METHOD)

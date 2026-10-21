@@ -114,9 +114,9 @@ class CheckoutFlowTests {
         String tamperedBody = """
                 {"id":1,"items":[{"id":1,"product":{"id":4,"code":"P004","basePrice":0.01},"quantity":10}]}
                 """;
-        mvc.perform(post("/api/v1/checkout").header("Authorization", bearer(guest))
+        mvc.perform(post("/api/v1/checkout").header("Idempotency-Key", UUID.randomUUID().toString()).header("Authorization", bearer(guest))
                         .contentType(MediaType.APPLICATION_JSON).content(tamperedBody))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.initialPrice").value(372.00))
                 .andExpect(jsonPath("$.finalPrice").value(372.00));
 
@@ -124,7 +124,7 @@ class CheckoutFlowTests {
         mvc.perform(get("/api/v1/cart").header("Authorization", bearer(guest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isEmpty());
-        mvc.perform(post("/api/v1/checkout").header("Authorization", bearer(guest)))
+        mvc.perform(post("/api/v1/checkout").header("Idempotency-Key", UUID.randomUUID().toString()).header("Authorization", bearer(guest)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -198,8 +198,9 @@ class CheckoutFlowTests {
         }
         assertThat(usage(code)).isZero();
 
-        mvc.perform(post("/api/v1/checkout").param("couponCode", code).header("Authorization", bearer(guest)))
-                .andExpect(status().isOk())
+        mvc.perform(post("/api/v1/checkout").header("Idempotency-Key", UUID.randomUUID().toString()).param("couponCode", code)
+                        .header("Authorization", bearer(guest)))
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.finalPrice").value(16.80));
         assertThat(usage(code)).isEqualTo(1);
 

@@ -77,7 +77,7 @@ class LoggingTests {
     void businessRejectionIsLoggedOnceAndNotAsError(CapturedOutput output) throws Exception {
         String guest = guestToken();
         int from = output.getOut().length();
-        mvc.perform(post("/api/v1/checkout").header("Authorization", "Bearer " + guest))
+        mvc.perform(post("/api/v1/checkout").header("Idempotency-Key", UUID.randomUUID().toString()).header("Authorization", "Bearer " + guest))
                 .andExpect(status().isBadRequest()); // empty cart
 
         String logs = output.getOut().substring(from);
@@ -94,8 +94,8 @@ class LoggingTests {
                 .content("{\"productCode\":\"P001\",\"quantity\":3}")
                 .header("Authorization", "Bearer " + user)).andExpect(status().isOk());
         int from = output.getOut().length();
-        mvc.perform(post("/api/v1/checkout").header("Authorization", "Bearer " + user))
-                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/checkout").header("Idempotency-Key", UUID.randomUUID().toString()).header("Authorization", "Bearer " + user))
+                .andExpect(status().isCreated());
 
         String logs = output.getOut().substring(from);
         assertThat(logs).containsPattern(

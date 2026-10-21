@@ -80,6 +80,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createProblemDetail(ex, HttpStatus.BAD_REQUEST, ERROR_MISSING_RESOURCE, TYPE_MISSING_RESOURCE);
     }
 
+    @ExceptionHandler(IdempotencyKeyConflictException.class)
+    public ProblemDetail handleIdempotencyKeyConflict(IdempotencyKeyConflictException ex) {
+        return createProblemDetail(ex, HttpStatus.CONFLICT, "Idempotency key already used", TYPE_IDEMPOTENCY_KEY_REUSED);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
         return createProblemDetail(ex, HttpStatus.BAD_REQUEST, "Invalid request", TYPE_VALIDATION_ERROR);

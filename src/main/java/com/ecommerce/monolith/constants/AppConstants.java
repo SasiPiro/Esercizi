@@ -36,5 +36,6 @@ public final class AppConstants {
     public static final URI TYPE_FORBIDDEN = URI.create(BASE_URL + "forbidden");
     public static final URI TYPE_DUPLICATE_RESOURCE = URI.create(BASE_URL + "duplicate-resource");
     public static final URI TYPE_CHECKOUT_CONFLICT = URI.create(BASE_URL + "checkout-conflict");
+    public static final URI TYPE_IDEMPOTENCY_KEY_REUSED = URI.create(BASE_URL + "idempotency-key-reused");
 
 }

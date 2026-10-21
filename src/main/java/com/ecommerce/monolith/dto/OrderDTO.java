@@ -12,5 +12,5 @@ public record OrderDTO(
         BigDecimal finalPrice,
         BigDecimal totalDiscountAmount,
         List<String> appliedStrategies,
-        String couponUsed) {
+        String couponUsed) implements PricedTotal {
 }
