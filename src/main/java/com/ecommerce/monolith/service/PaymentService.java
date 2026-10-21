@@ -6,8 +6,11 @@ import com.ecommerce.monolith.dto.CalculationResultDTO;
 import com.ecommerce.monolith.exception.CartCheckoutConflictException;
 import com.ecommerce.monolith.exception.CartEmptyException;
 import com.ecommerce.monolith.model.Cart;
+import com.ecommerce.monolith.model.CartItem;
 import com.ecommerce.monolith.model.Coupon;
+import com.ecommerce.monolith.model.Order;
 import com.ecommerce.monolith.repository.CartRepository;
+import com.ecommerce.monolith.repository.OrderRepository;
 import org.slf4j.event.Level;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,12 +18,14 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Checkout flow, split in two operations:
  * <ul>
  * <li>{@link #quote(String)}: read-only preview of the total. Never consumes a coupon.</li>
- * <li>{@link #placeOrder(String)}: confirms the purchase, redeems the coupon and closes the cart.</li>
+ * <li>{@link #placeOrder(String)}: confirms the purchase, redeems the coupon, closes the cart and
+ * records an {@link Order} with a snapshot of what was sold and at what price.</li>
  * </ul>
  * In both cases the cart is loaded from the database for the authenticated principal:
  * the client never sends items or prices.
@@ -33,14 +38,17 @@ public class PaymentService {
     private final CouponService couponService;
     private final PricingEngine pricingEngine;
     private final TimeService timeService;
+    private final OrderRepository orderRepository;
 
     public PaymentService(CartService cartService, CartRepository cartRepository,
-            CouponService couponService, PricingEngine pricingEngine, TimeService timeService) {
+            CouponService couponService, PricingEngine pricingEngine, TimeService timeService,
+            OrderRepository orderRepository) {
         this.cartService = cartService;
         this.cartRepository = cartRepository;
         this.couponService = couponService;
         this.pricingEngine = pricingEngine;
         this.timeService = timeService;
+        this.orderRepository = orderRepository;
     }
 
     @TrackPromotion(level = Level.DEBUG) // previews are frequent: not a business event
@@ -76,10 +84,25 @@ public class PaymentService {
         }
 
         CalculationResultDTO result = pricingEngine.price(cart, current.user(), now, coupon);
+        // Same transaction as the coupon redemption: no order without its redemption, and vice versa
+        recordOrder(UUID.randomUUID().toString(), current, result, now);
 
         cart.setCartStatus(Cart.CartStatus.PURCHASED);
         cartService.replacePurchasedCart(cart);
-        // Next step: persist an Order with a price snapshot and publish an OrderPlaced event
         return result;
+    }
+
+    private Order recordOrder(String idempotencyKey, CartService.CurrentCart current,
+            CalculationResultDTO result, Instant now) {
+        Long userId = current.user() != null ? current.user().getId() : null;
+        Order order = new Order(idempotencyKey, userId, current.anonymousId(), now);
+        for (CartItem item : current.cart().getItems()) {
+            order.addLine(item.getProduct(), item.getQuantity());
+        }
+        order.setInitialPrice(result.initialPrice());
+        order.setFinalPrice(result.finalPrice());
+        order.setCouponCode(result.couponUsed());
+        order.setAppliedStrategies(String.join(",", result.appliedStrategies()));
+        return orderRepository.save(order);
     }
 }

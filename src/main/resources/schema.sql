@@ -1,4 +1,6 @@
 -- Drop order: child tables first (referential integrity)
+DROP TABLE IF EXISTS order_line;
+DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS cart_ownership;
 DROP TABLE IF EXISTS cart_item;
 DROP TABLE IF EXISTS cart;
@@ -84,6 +86,42 @@ CREATE TABLE cart_ownership (
     CONSTRAINT fk_ownership_user FOREIGN KEY (user_id) REFERENCES user_app(id),
     -- exactly one owner: either a registered user or a guest
     CONSTRAINT chk_ownership_single_owner CHECK ((user_id IS NULL) <> (anonymous_id IS NULL))
+);
+
+-- =============================================
+-- ORDERS
+-- Prices and product codes are a snapshot taken at checkout: no foreign key to product,
+-- so catalog changes never alter a past order
+-- =============================================
+
+CREATE TABLE orders (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    idempotency_key VARCHAR(64) NOT NULL UNIQUE,   -- a retried checkout cannot create a second order
+    user_id BIGINT,
+    anonymous_id VARCHAR(64),
+    initial_price DECIMAL(19, 2) NOT NULL,
+    final_price DECIMAL(19, 2) NOT NULL,
+    coupon_code VARCHAR(50),
+    applied_strategies VARCHAR(255) NOT NULL,
+    placed_at TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES user_app(id),
+    -- exactly one owner: either a registered user or a guest
+    CONSTRAINT chk_orders_single_owner CHECK ((user_id IS NULL) <> (anonymous_id IS NULL))
+);
+
+CREATE INDEX idx_orders_user ON orders (user_id);
+CREATE INDEX idx_orders_anonymous ON orders (anonymous_id);
+
+CREATE TABLE order_line (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_id BIGINT NOT NULL,
+    product_code VARCHAR(255) NOT NULL,
+    unit_price DECIMAL(19, 2) NOT NULL,
+    quantity INTEGER NOT NULL,
+
+    CONSTRAINT fk_order_line_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    CHECK (quantity >= 1)
 );
 
 -- =============================================
