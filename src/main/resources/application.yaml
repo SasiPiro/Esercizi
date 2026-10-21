@@ -18,9 +18,10 @@ spring:
   threads:
     virtual:
       enabled: true
-  # In-process cache for product lookups by code. Per instance: with several instances an
-  # update is visible elsewhere only after expiry, fine for catalog data, never for prices at
-  # checkout (read from the database). recordStats exposes hit/miss metrics.
+  # In-process cache for GET /api/v1/products/{code} (immutable DTOs, see ProductCatalog).
+  # Per instance: with several instances an update is visible elsewhere only after expiry,
+  # fine for catalog pages, never for prices at checkout (read with the cart from the
+  # database). recordStats exposes hit/miss metrics.
   cache:
     type: caffeine
     cache-names: products
