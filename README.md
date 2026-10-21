@@ -14,11 +14,13 @@ It is one half of a pair. The same domain is also implemented as a distributed s
 - [Design decisions worth reading](#design-decisions-worth-reading)
 - [Why two repositories: monolith vs microservices](#why-two-repositories-monolith-vs-microservices)
 - [Architecture](#architecture)
+- [Project structure](#project-structure)
 - [Tech stack](#tech-stack)
 - [Running locally](#running-locally)
 - [API overview](#api-overview)
 - [Testing](#testing)
 - [Configuration](#configuration)
+- [Known limits](#known-limits)
 
 ---
 
@@ -29,6 +31,8 @@ It is one half of a pair. The same domain is also implemented as a distributed s
 - **Coupons with usage limits.** Each coupon has a usage limit and an expiry date; the last use can never be sold twice, even under concurrent checkouts.
 - **Checkout and orders.** A read-only quote (`GET /checkout/quote`) and a confirmation (`POST /checkout`) that prices the cart on the server, redeems the coupon, closes the cart and records an order with a price snapshot in one transaction. An `Idempotency-Key` header makes a retried checkout return the same order instead of buying twice.
 - **Scheduled jobs.** Coupon expiry every minute and cleanup of abandoned guest carts every night, safe to run with several instances.
+- **Order history and notifications.** Shoppers read their own orders only; a placed order publishes `OrderPlaced`, delivered to the notifications module after the purchase commits.
+- **Ready to operate.** Health and Prometheus endpoints with business metrics, one Docker image, `docker compose up` with PostgreSQL, and a CI pipeline that runs every test on PostgreSQL.
 
 ---
 
@@ -49,11 +53,12 @@ Each of these was a real bug in an earlier version of the code, reproduced with 
 | A JWT secret was committed with a default value | No default; startup fails without a strong secret | `JwtUtil` |
 | A purchase left only the closed cart, linked to current prices | An order keeps product codes and unit prices as they were at checkout | `Order`, `OrderLine` |
 | A client retrying after a timeout could buy twice | `Idempotency-Key` header; the unique constraint on the key is the real guard, and a request that loses the race answers with the winner's order | `OrderService.placeOrder` |
+| Ten concurrent retries of one checkout all answered 500 after 30 seconds (seen only on PostgreSQL) | The idempotent orchestration runs outside any transaction scope, so a checkout holds one pooled connection instead of two | `OrderService.placeOrder` |
+| Adding Spring Modulith started every scheduled job, even with scheduling disabled | `spring-modulith-moments`, whose auto-configuration declares `@EnableScheduling`, is excluded | `pom.xml` |
+| A metric could count a checkout that rolled back | Business metrics are recorded only after the transaction commits | `AfterCommit` |
 | Logs mixed formats and logged business errors as ERROR | One `[EVENT] key=value` format, levels by meaning, a request id on every line | `RequestIdFilter`, `GlobalExceptionHandler` |
 
-**Why a local cache and not Redis here:** product lookups by code are cached in-process with Caffeine (`ProductRepository.findByCode`, 5 minutes, at most 1000 entries). In one process a local cache needs no network hop and no extra infrastructure; the microservices repository uses Redis because several replicas must share one cache. The limit is explicit: if the monolith runs as several instances, each has its own cache, so a product update is visible on the other instances only after the entry expires. That is acceptable for catalog data and never used for what must be exact: prices at checkout are read with the cart from the database.
-
-**Why HMAC (symmetric) JWTs here:** the same application signs and verifies tokens, so the secret never leaves it. In the microservices repository many services verify tokens, so there Keycloak signs with RS256 and services only hold the public key.
+The choices that differ from the microservices repository (one transaction instead of a saga, HMAC instead of RS256, a local cache instead of Redis, ...) are explained [below](#the-decisions-that-differ-and-what-they-cost).
 
 ---
 
@@ -61,18 +66,71 @@ Each of these was a real bug in an earlier version of the code, reproduced with 
 
 Both repositories implement an e-commerce backend on purpose. Seeing the same domain solved twice makes the trade-offs concrete: each repository concentrates on the problems its architecture is good at, instead of duplicating features.
 
-| Concern | ecommerce-monolith (this repo) | [ecommerce-microservice](https://github.com/SasiPiro/ecommerce-microservice) |
+**State of the other repository.** ecommerce-microservice is work in progress: the API gateway, Keycloak authentication, user-service and product-service with one database each exist; the order flow (saga, outbox, Kafka), Redis, circuit breakers, Testcontainers, Kubernetes and CI are designed but not built yet. The table marks them *planned*; this repository describes only what is in its code.
+
+| Concern | ecommerce-monolith (this repo, implemented) | [ecommerce-microservice](https://github.com/SasiPiro/ecommerce-microservice) |
 |---|---|---|
-| Focus | Deep domain logic: pricing, promotions, coupons, cart | The order flow across services, and operating a distributed system |
-| Consistency | One ACID transaction across cart, coupon and purchase | Eventual consistency: saga with compensations, transactional outbox |
-| Concurrency | Database constraints, atomic conditional updates, row locks | Idempotent consumers, distributed locks where needed |
-| Communication | In-process method calls and domain events | HTTP through the gateway, asynchronous events on Kafka |
-| Authentication | The app issues and verifies its own JWT (HMAC) | Keycloak issues tokens (RS256); services only verify with a public key |
-| Failure handling | A failure is an exception in one process | Timeouts, retries on reads, circuit breakers, fallbacks |
-| Observability | Request id in every log line of one process; Prometheus metrics of one process | Correlation id across services, metrics per service, central logs |
-| Deployment | One artifact, one database | One image and one database per service, Kubernetes |
+| Focus | Deep domain logic: pricing, promotions, coupons, cart, orders | The order flow across services, and operating a distributed system |
+| Consistency | One ACID transaction: cart claim, coupon redemption, order and event publication commit or roll back together | Saga with compensations across order, stock and payment (*planned*) |
+| Duplicate requests | `Idempotency-Key` header, unique constraint on the order key | Idempotent consumers, because the broker redelivers (*planned*) |
+| Events between parts | `OrderPlaced` in process (Spring Modulith), stored in `event_publication` in the same transaction | Transactional outbox and Kafka (*planned*) |
+| Boundaries | Packages, verified by `ModularityTests` | Processes and the network |
+| Data | One PostgreSQL, one Flyway history, foreign keys across modules | One PostgreSQL per service, no cross-service joins or foreign keys |
+| Authentication | The application issues and verifies its own JWT (HMAC) | Keycloak issues tokens (RS256); the gateway verifies them with the public keys and forwards the identity |
+| Caching | Caffeine, in-process | Redis shared by the replicas (*planned*) |
+| Failure handling | An exception, and the transaction rolls back | Timeouts, retries on reads, circuit breakers, fallbacks (*planned*) |
+| Observability | Request id in every log line; one Prometheus endpoint with business metrics | Correlation id across services; Prometheus, Grafana, Loki (*planned*) |
+| Tests | Every test on PostgreSQL (Testcontainers), concurrency races included | H2 today, Testcontainers *planned* |
+| Delivery | One image, Compose with the application and its database, one CI workflow | One image per service, Kubernetes, one workflow per service (*planned*) |
 
 **When a monolith is the right choice, as practiced here:** a single team, a domain whose rules must change together (a promotion touches cart, pricing and checkout at once), and a need for strong consistency. You get one transaction, one deployment, one place to debug, and refactoring across modules is a compiler-checked change instead of a coordinated API migration. **The price:** everything scales and deploys together, and without discipline the code turns into a "big ball of mud". The [module boundaries](#architecture), verified by tests with Spring Modulith, address the second point.
+
+### The decisions that differ, and what they cost
+
+**1. Checkout: one transaction instead of a saga.**
+*Here:* `PaymentService.placeOrder` claims the cart (conditional `UPDATE`), redeems the coupon (conditional `UPDATE`), inserts the order with its lines and the event publication, and gives the owner a fresh cart, all in one PostgreSQL transaction.
+*There:* stock, payment and order live in different databases, so each step commits on its own and a later failure needs a compensating action (release the stock, refund the payment).
+*Impact:* here any failure rolls everything back, coupon use included, and no intermediate state is ever visible; there is no compensation code to write or test. The price is that everything involved must live in one database and scale with it. A saga accepts states such as "order pending" that users can see, and every step needs its compensation and its tests.
+
+**2. Duplicate requests: an idempotency key instead of idempotent consumers.**
+*Here:* the client sends one `Idempotency-Key` per checkout attempt; the unique constraint on `orders.idempotency_key` is the real guard, and a request that loses a race answers with the winner's order. The lookup runs outside the checkout transaction, so it sees the winner's commit and holds no second connection.
+*There:* a broker delivers at least once, so every consumer must recognize a message it already processed (a processed-messages table or naturally idempotent operations).
+*Impact:* one constraint on one table gives "at most one order per key" here. Across a database and a broker that guarantee cannot come from a single transaction: deduplication becomes code in every consumer.
+
+**3. Events: an in-process registry instead of an outbox and Kafka.**
+*Here:* `OrderPlaced` is a Java record published inside the checkout transaction and stored in `event_publication` with it; the `notifications` listener runs after the commit, asynchronously, in its own transaction. A failed delivery stays incomplete and can be resubmitted.
+*There:* an outbox table is written in the service's transaction and a relay publishes it to Kafka for other services.
+*Impact:* both give "if the order commits, the event is not lost", but here there is no broker to run, no network hop, and an event is a type: renaming a field is a refactoring the compiler checks. There an event is a contract between separately deployed services and must be versioned, and consumer lag and partition ordering become operational concerns. The price here: listeners run in the same process and scale with it.
+
+**4. Boundaries: verified packages instead of processes.**
+*Here:* each module exposes only its root package; `ModularityTests` fails the build on access to another module's `internal` package or on a dependency cycle. Its first run found four real couplings, now removed: the exception handler depended on every module (each exception now carries its own HTTP mapping through `BusinessException`), identity created the guest cart directly (it now publishes `GuestSessionStarted`), cart used identity's `JwtUtil` (now `AuthFacade.verifiedGuestId`), and checkout used cart's repository (now `CartService.claimForCheckout`).
+*There:* the boundary is the network: crossing it by accident is impossible, and every crossing is an API with latency, failures and versioning.
+*Impact:* here a boundary violation is a failing test and moving code between modules is an IDE refactoring. A synchronous reaction inside one transaction remains possible where it matters: the guest cart is created by a synchronous listener before the guest token is returned, which across services would be a remote call that can fail.
+
+**5. Data: one database instead of one per service.**
+*Here:* one schema, one Flyway history validated by Hibernate at startup; `orders.user_id` is a foreign key to `user_app`, and any report is a join.
+*There:* each service owns its database; references to another service's data are plain ids checked through APIs or events, and reports need replicated data.
+*Impact:* referential integrity and joins are free here. One decision is the same in both on purpose: order lines copy product code and unit price at checkout and have no foreign key to `product`, because an order must not change when the catalog does. That is also exactly what a separate order service would need.
+
+**6. Authentication: HMAC instead of RS256.**
+*Here:* the same process signs and verifies tokens with one HMAC key; startup fails if the key is missing, shorter than 32 bytes or publicly known. Several instances share the key through `JWT_SECRET`.
+*There:* only Keycloak holds the private key; the gateway verifies tokens with the public keys (JWKS) and forwards the identity in `X-User-*` headers.
+*Impact:* a symmetric key is simpler and fast, and it is safe while the key never leaves the application. With many verifiers a shared secret would let any of them forge tokens; public-key verification avoids that and allows key rotation without redeploying services. The price is a new trust problem: services must accept identity headers only from the gateway.
+
+**7. Caching: a local cache instead of Redis.**
+*Here:* product lookups by code are cached in-process with Caffeine (`ProductRepository.findByCode`, 5 minutes, at most 1000 entries, unknown codes not cached, evicted on save).
+*There:* a Redis cache shared by the replicas of product-service.
+*Impact:* a local cache needs no network hop and no extra infrastructure. The limit is explicit: with several instances each has its own cache, so a product update reaches the others only when their entry expires. Acceptable for catalog data; never used for what must be exact, since prices at checkout are read with the cart from the database.
+
+**8. Failure handling and observability.**
+*Here:* a failure is an exception in one process: the transaction rolls back and `GlobalExceptionHandler` turns it into a problem detail. One request id in the logs and one Prometheus endpoint describe the whole system; business metrics (`shop_coupon_redeemed_total`, `shop_checkout_amount`) are recorded only after commit.
+*There:* every remote call can be slow or fail, so it needs timeouts, retries (on idempotent reads only) and circuit breakers, so that a slow product-service does not exhaust the gateway; a correlation id must be propagated through headers, and logs and metrics are collected centrally.
+*Impact:* debugging here is one stack trace and one log stream. There, the tooling is not optional: without it a failure is not even visible.
+
+**9. Tests and delivery.**
+*Here:* every test runs on PostgreSQL in Testcontainers (one container per Spring context), so the concurrency tests prove what the real database does with row locks and unique constraints; running on PostgreSQL is what exposed the idempotency connection problem in decision 2. One Dockerfile, one Compose file with two containers, one CI workflow that runs the whole suite on every push.
+*There:* each service is built, tested and deployed on its own, and the contracts between services need their own tests.
+*Impact:* one green build here means the whole system works together. The price is that everything is released together.
 
 ---
 
@@ -81,33 +139,43 @@ Both repositories implement an e-commerce backend on purpose. Seeing the same do
 ```mermaid
 graph LR
     Client["Client"]
+    PROM["Prometheus"]
 
     subgraph APP["ecommerce-monolith (one process)"]
-        WEB["REST controllers<br/>RequestIdFilter, JWT filter"]
-        CART["Cart<br/>guest / user, merge"]
-        PRICING["Pricing<br/>strategies, coupons"]
-        CHECKOUT["Checkout<br/>quote, place order"]
-        JOBS["Scheduled jobs<br/>ShedLock"]
+        WEB["HTTP layer<br/>RequestIdFilter, JWT filter, problem details"]
+        ID["identity<br/>users, JWT, guest sessions"]
+        CAT["catalog<br/>products, Caffeine cache"]
+        CART["cart<br/>guest / user carts, merge, cleanup job"]
+        PRICING["pricing<br/>strategies, coupons, expiry job"]
+        ORD["ordering<br/>checkout, orders, idempotency"]
+        NOTIF["notifications<br/>OrderPlaced listener"]
     end
 
-    DB[("PostgreSQL")]
+    DB[("PostgreSQL<br/>Flyway schema, event_publication, shedlock")]
 
     Client --> WEB
+    PROM -- "scrapes /actuator/prometheus" --> WEB
+    WEB --> ID
     WEB --> CART
-    WEB --> CHECKOUT
-    CHECKOUT --> CART
-    CHECKOUT --> PRICING
-    CART --> DB
-    PRICING --> DB
-    CHECKOUT --> DB
-    JOBS --> DB
+    WEB --> ORD
+    ORD --> CART
+    ORD --> PRICING
+    ORD --> ID
+    PRICING --> CART
+    CART --> CAT
+    CART --> ID
+    ID -. "GuestSessionStarted (synchronous)" .-> CART
+    ORD -. "OrderPlaced (after commit)" .-> NOTIF
+    APP --> DB
 ```
+
+Solid arrows are method calls into another module's public API; dotted arrows are domain events.
 
 The code is organized by business module, one package each: `catalog`, `identity`, `cart`, `pricing`, `ordering`, `notifications`, plus `shared` (clock, error handling, request id, scheduling). What other modules may use sits in the module's root package; everything else is in its `internal` sub-package.
 
-The boundaries are verified by [Spring Modulith](https://spring.io/projects/spring-modulith) in `ModularityTests`: a module that reaches into another module's `internal` package, or a dependency cycle between modules, fails the build. Allowed dependencies today: `ordering` → `cart`, `pricing`, `identity`; `pricing` → `cart`, `identity`; `cart` → `catalog`, `identity`; everything → `shared`. Where a dependency would point the other way, the module publishes an event instead (identity announces a new guest, cart creates its cart).
+The boundaries are verified by [Spring Modulith](https://spring.io/projects/spring-modulith) in `ModularityTests`: a module that reaches into another module's `internal` package, or a dependency cycle between modules, fails the build. Allowed dependencies today: `ordering` → `cart`, `pricing`, `identity`; `pricing` → `cart`, `identity`; `cart` → `catalog`, `identity`; everything → `shared`. Where a dependency would point the other way, the module publishes an event instead (identity announces a new guest, cart creates its cart). The same test writes the module diagrams to `target/spring-modulith-docs`.
 
-**Domain events.** A placed order publishes `OrderPlaced`; the `notifications` module reacts with an `@ApplicationModuleListener`, asynchronously, after the checkout commits and in its own transaction, so a slow or failing notification never slows down or rolls back a purchase, and `ordering` does not know who listens. Every publication is stored in the `event_publication` table in the checkout transaction and marked complete when the listener succeeds; a failed (or interrupted) delivery stays incomplete and can be resubmitted. This is the in-process counterpart of the transactional outbox used in the microservices repository, without a broker. The test also writes the module diagrams to `target/spring-modulith-docs`.
+**Domain events.** A placed order publishes `OrderPlaced`; the `notifications` module reacts with an `@ApplicationModuleListener`, asynchronously, after the checkout commits and in its own transaction, so a slow or failing notification never slows down or rolls back a purchase, and `ordering` does not know who listens. Every publication is stored in the `event_publication` table in the checkout transaction and marked complete when the listener succeeds; a failed (or interrupted) delivery stays incomplete and can be resubmitted. This is the in-process counterpart of the transactional outbox used in the microservices repository, without a broker.
 
 **Checkout in one transaction:**
 
@@ -120,6 +188,28 @@ The boundaries are verified by [Spring Modulith](https://spring.io/projects/spri
 7. Publish `OrderPlaced`, stored in the event publication registry; listeners run after the commit.
 
 If any step fails, the whole transaction rolls back, coupon use included. In the microservices repository the equivalent flow needs a saga.
+
+---
+
+## Project structure
+
+```
+src/main/java/com/ecommerce/monolith/
+├── catalog/          Product, ProductRepository (cached lookups by code)
+├── identity/         User, Role, AuthFacade, GuestSessionStarted
+│   └── internal/     AuthController, AuthService, JwtUtil, SecurityConfig
+├── cart/             Cart, CartItem, CartService
+│   └── internal/     CartController, ownership, repositories, CartCleanupJob
+├── pricing/          PricingEngine, CouponService, Coupon, @TrackPromotion
+│   └── internal/     promotion strategies, PromotionConfig, PromotionExpiryJob, pricing audit
+├── ordering/         OrderPlaced (the only type other modules may use)
+│   └── internal/     checkout and order services, controllers, Order, OrderLine
+├── notifications/    OrderNotifications
+└── shared/           TimeService, BusinessException, AfterCommit, AppConstants
+    └── internal/     GlobalExceptionHandler, RequestIdFilter, scheduling, caching
+src/main/resources/db/migration/   schema, applied in every environment
+src/main/resources/db/seed/        sample data, dev profile and Compose only
+```
 
 ---
 
@@ -252,9 +342,22 @@ Docker must be running: every Spring test context gets its own PostgreSQL contai
 | `SPRING_DATASOURCE_URL` | none (required) | PostgreSQL JDBC URL, e.g. `jdbc:postgresql://db:5432/ecommerce` |
 | `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | none (required) | Database credentials |
 | `SPRING_PROFILES_ACTIVE` | none | `dev` for local development only |
+| `SPRING_FLYWAY_LOCATIONS` | `classpath:db/migration` | Add `classpath:db/seed` for the sample data (the `dev` profile and Compose do) |
 | `LOGGING_STRUCTURED_FORMAT_CONSOLE` | unset | `ecs` or `logstash` for JSON log lines |
 
-Promotion percentages and the seasonal windows (days of the year, repeated every year) are in `application.yaml` under `promotions`.
+Promotion percentages and the seasonal windows (days of the year, repeated every year) are in `application.yaml` under `promotions`. The cache size and expiry are under `spring.cache`, the exposed actuator endpoints under `management`.
+
+---
+
+## Known limits
+
+Deliberate trade-offs, or work not done yet:
+
+- **`/actuator/prometheus` and `/actuator/health` are public**, for the scraper and the orchestrator. In production restrict them at network level (a separate management port or an ingress rule).
+- **Failed notifications are not retried automatically.** A failed `OrderPlaced` delivery stays incomplete in `event_publication`; it is resubmitted through `IncompleteEventPublications`, which nothing schedules yet.
+- **The product cache is per instance** and holds detached `Product` entities shared between threads. That is fine while nothing modifies a looked-up product (no code does); a cache of read-only DTOs would be safer once products become editable.
+- **The Black Friday window moves every year** and must be updated in `promotions.black-friday`.
+- **CI builds the image but does not publish it**: pushing to a registry needs credentials and a release policy.
 
 ---
 
