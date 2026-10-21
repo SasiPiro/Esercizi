@@ -14,4 +14,5 @@ jobs:
           cache: maven
       - run: ./mvnw -B verify          # Testcontainers works: runners have Docker
       - if: github.ref == 'refs/heads/master'
-        run: docker build -t ghcr.io/${{ github.repository_owner }}/ecommerce-monolith:${{ github.sha }} .
+        # Image names must be lowercase, the owner name may not be (e.g. SasiPiro)
+        run: docker build -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ecommerce-monolith:${GITHUB_SHA}" .
