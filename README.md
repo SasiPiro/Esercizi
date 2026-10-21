@@ -100,7 +100,7 @@ graph LR
     JOBS --> DB
 ```
 
-The code is currently organized by technical layer (`controller`, `service`, `repository`, ...). The next step is one package per business module (catalog, identity, cart, pricing, ordering), with boundaries verified by tests.
+The code is organized by business module, one package each: `catalog`, `identity`, `cart`, `pricing`, `ordering`, plus `shared` (clock, error handling, request id, scheduling). What other modules may use sits in the module's root package; everything else is in its `internal` sub-package.
 
 **Checkout in one transaction:**
 

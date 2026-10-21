@@ -1,12 +1,12 @@
 package com.ecommerce.monolith;
 
-import com.ecommerce.monolith.config.PromotionConfig;
-import com.ecommerce.monolith.dto.PromotionContext;
-import com.ecommerce.monolith.model.User;
-import com.ecommerce.monolith.service.TimeService;
-import com.ecommerce.monolith.strategy.BlackFridayDiscount;
-import com.ecommerce.monolith.strategy.ChristmasDiscount;
-import com.ecommerce.monolith.strategy.VipExclusiveDiscount;
+import com.ecommerce.monolith.identity.User;
+import com.ecommerce.monolith.pricing.internal.BlackFridayDiscount;
+import com.ecommerce.monolith.pricing.internal.ChristmasDiscount;
+import com.ecommerce.monolith.pricing.internal.PromotionConfig;
+import com.ecommerce.monolith.pricing.internal.PromotionContext;
+import com.ecommerce.monolith.pricing.internal.VipExclusiveDiscount;
+import com.ecommerce.monolith.shared.TimeService;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -1,6 +1,6 @@
 package com.ecommerce.monolith;
 
-import com.ecommerce.monolith.security.JwtUtil;
+import com.ecommerce.monolith.identity.internal.JwtUtil;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;

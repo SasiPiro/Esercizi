@@ -1,10 +1,10 @@
 package com.ecommerce.monolith;
 
-import com.ecommerce.monolith.exception.PromotionExpiredException;
-import com.ecommerce.monolith.model.Coupon;
-import com.ecommerce.monolith.repository.CouponRepository;
-import com.ecommerce.monolith.service.CouponService;
-import com.ecommerce.monolith.service.TimeService;
+import com.ecommerce.monolith.pricing.Coupon;
+import com.ecommerce.monolith.pricing.CouponService;
+import com.ecommerce.monolith.pricing.PromotionExpiredException;
+import com.ecommerce.monolith.pricing.internal.CouponRepository;
+import com.ecommerce.monolith.shared.TimeService;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -1,14 +1,14 @@
 package com.ecommerce.monolith;
 
-import com.ecommerce.monolith.model.Coupon;
-import com.ecommerce.monolith.model.Order;
-import com.ecommerce.monolith.model.OrderLine;
-import com.ecommerce.monolith.model.Product;
-import com.ecommerce.monolith.repository.CouponRepository;
-import com.ecommerce.monolith.repository.OrderRepository;
-import com.ecommerce.monolith.repository.ProductRepository;
-import com.ecommerce.monolith.security.JwtUtil;
-import com.ecommerce.monolith.service.TimeService;
+import com.ecommerce.monolith.catalog.Product;
+import com.ecommerce.monolith.catalog.ProductRepository;
+import com.ecommerce.monolith.identity.internal.JwtUtil;
+import com.ecommerce.monolith.ordering.internal.Order;
+import com.ecommerce.monolith.ordering.internal.OrderLine;
+import com.ecommerce.monolith.ordering.internal.OrderRepository;
+import com.ecommerce.monolith.pricing.Coupon;
+import com.ecommerce.monolith.pricing.internal.CouponRepository;
+import com.ecommerce.monolith.shared.TimeService;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

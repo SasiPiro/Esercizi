@@ -1,7 +1,7 @@
 package com.ecommerce.monolith;
 
-import com.ecommerce.monolith.model.Product;
-import com.ecommerce.monolith.model.User;
+import com.ecommerce.monolith.catalog.Product;
+import com.ecommerce.monolith.identity.User;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.Hibernate;

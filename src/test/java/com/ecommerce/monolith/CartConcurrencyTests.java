@@ -1,7 +1,7 @@
 package com.ecommerce.monolith;
 
-import com.ecommerce.monolith.repository.CartOwnershipRepository;
-import com.ecommerce.monolith.repository.UserRepository;
+import com.ecommerce.monolith.cart.internal.CartOwnershipRepository;
+import com.ecommerce.monolith.identity.UserRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

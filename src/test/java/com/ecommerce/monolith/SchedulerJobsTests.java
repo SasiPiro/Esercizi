@@ -1,11 +1,11 @@
 package com.ecommerce.monolith;
 
-import com.ecommerce.monolith.model.Coupon;
-import com.ecommerce.monolith.model.Coupon.CouponStatus;
-import com.ecommerce.monolith.repository.CouponRepository;
-import com.ecommerce.monolith.scheduler.CartCleanupJob;
-import com.ecommerce.monolith.scheduler.PromotionExpiryJob;
-import com.ecommerce.monolith.service.TimeService;
+import com.ecommerce.monolith.cart.internal.CartCleanupJob;
+import com.ecommerce.monolith.pricing.Coupon.CouponStatus;
+import com.ecommerce.monolith.pricing.Coupon;
+import com.ecommerce.monolith.pricing.internal.CouponRepository;
+import com.ecommerce.monolith.pricing.internal.PromotionExpiryJob;
+import com.ecommerce.monolith.shared.TimeService;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
