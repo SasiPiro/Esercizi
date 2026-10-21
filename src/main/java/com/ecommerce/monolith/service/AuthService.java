@@ -20,10 +20,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional
+@Transactional(readOnly = true)
 public class AuthService {
 
         private static final Logger log = LoggerFactory.getLogger(AuthService.class);
@@ -51,8 +52,16 @@ public class AuthService {
         }
 
         /**
-         * Authenticate user using Spring Security and generate JWT token
+         * Authenticate user using Spring Security and generate JWT token.
+         *
+         * <p>
+         * No transaction around the whole method: BCrypt verification is deliberately slow,
+         * and a transaction would hold a pooled connection for its whole duration. The user
+         * lookups (in SecurityUserService and below) run in their own short read-only
+         * transactions.
+         * </p>
          */
+        @Transactional(propagation = Propagation.NOT_SUPPORTED)
         public LoginResponseDTO login(LoginRequestDTO request) {
                 // Delegate authentication to Spring Security
                 Authentication authentication;
@@ -84,6 +93,7 @@ public class AuthService {
         /**
          * Register new user with default CUSTOMER role
          */
+        @Transactional
         public UserResponseDTO register(RegisterRequestDTO request) {
                 // Check if username already exists
                 if (userRepository.existsByUsername(request.username())) {

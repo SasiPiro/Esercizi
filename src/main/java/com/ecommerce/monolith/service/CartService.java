@@ -20,8 +20,12 @@ import java.util.Objects;
 import java.util.Optional;
 import static com.ecommerce.monolith.constants.AppConstants.ERROR_USER_NOT_FOUND;
 
+/**
+ * Read-only transactions by default. Almost every public method writes, because the
+ * caller's cart is created lazily on first access, so each of them opts in explicitly.
+ */
 @Service
-@Transactional
+@Transactional(readOnly = true)
 public class CartService {
 
     /** Upper bound for the quantity of a single cart line. */
@@ -51,6 +55,7 @@ public class CartService {
      * =======================
      */
 
+    @Transactional
     public CartDTO getOrCreateCart() {
         String principal = authFacade.getCurrentUsername();
         User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
@@ -63,6 +68,7 @@ public class CartService {
     public record CurrentCart(Cart cart, User user, String anonymousId) {
     }
 
+    @Transactional
     public CurrentCart currentCart() {
         String principal = authFacade.getCurrentUsername();
         User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
@@ -76,6 +82,7 @@ public class CartService {
      * Swapping the cart on the existing ownership row means the owner is never left
      * without a cart, so there is nothing to (re)create lazily after a checkout.
      */
+    @Transactional
     public void replacePurchasedCart(Cart purchased) {
         ownershipRepository.findByCartId(purchased.getId()).ifPresent(ownership -> {
             Cart fresh = new Cart();
@@ -86,6 +93,7 @@ public class CartService {
         });
     }
 
+    @Transactional
     public Cart getCartEntity(String anonymousId, User user) {
 
         // LOGGED IN USER
@@ -112,6 +120,7 @@ public class CartService {
      * Creates the cart of a new guest. Called when the guest token is issued, i.e. before
      * any concurrent request of that guest can exist, so it cannot race.
      */
+    @Transactional
     public Cart createGuestCart(String anonymousId) {
         Cart cart = cartRepository.save(new Cart());
 
@@ -129,6 +138,7 @@ public class CartService {
      * =======================
      */
 
+    @Transactional
     public CartDTO mergeGuestCartIntoUserCart(String anonymousId) {
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -212,6 +222,7 @@ public class CartService {
      * =======================
      */
 
+    @Transactional
     public CartDTO addItem(String productCode, int quantity) {
         String principal = authFacade.getCurrentUsername();
         User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
@@ -235,6 +246,7 @@ public class CartService {
         return cartMapper.toDto(savedCart, user, anonymousId);
     }
 
+    @Transactional
     public CartDTO removeItem(String productCode) {
         String principal = (String) Objects.requireNonNull(SecurityContextHolder.getContext().getAuthentication())
                 .getPrincipal();
