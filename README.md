@@ -153,6 +153,15 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 
 The schema is created by the Flyway migrations in `db/migration` at startup. The `dev` profile provides a local JWT secret, the local database settings, the sample data (`db/seed`, applied only in `dev`), and CORS for `localhost:3000` and `localhost:5173`. **Without a profile the application refuses to start** unless `JWT_SECRET` and the database settings are provided: this is intentional.
 
+**With Docker Compose** (the application image and PostgreSQL, nothing else to install):
+
+```bash
+cp .env.example .env    # set JWT_SECRET (e.g. openssl rand -base64 48) and POSTGRES_PASSWORD
+docker compose up --build
+```
+
+The application waits for the database health check, applies the migrations and the sample data, and listens on `localhost:8080`. Compose refuses to start while a secret in `.env` is empty. `docker compose down -v` removes the containers and the database volume.
+
 Seed users (local only): `JAY` / `jay-password` (VIP, admin) and `admin` / `admin-password` (VIP, admin). Products `P001`-`P004`, coupons `SAVE10` (one use left) and `FLASH50`.
 
 **A complete flow with curl:**
