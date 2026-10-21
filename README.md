@@ -4,7 +4,7 @@ An e-commerce backend built as a **single deployable Spring Boot application**, 
 
 It is one half of a pair. The same domain is also implemented as a distributed system in **[ecommerce-microservice](https://github.com/SasiPiro/ecommerce-microservice)**, which focuses on the problems that only exist once a system is split into services. See [Why two repositories](#why-two-repositories-monolith-vs-microservices).
 
-> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent. Next steps are explicit modules with Spring Modulith and PostgreSQL with Testcontainers (see [Planned next](#planned-next-and-why)).
+> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events. Next steps are PostgreSQL with Testcontainers, metrics and CI (see [Planned next](#planned-next-and-why)).
 
 ---
 
@@ -69,7 +69,7 @@ Both repositories implement an e-commerce backend on purpose. Seeing the same do
 | Observability | Request id in every log line of one process | Correlation id across services, metrics per service, central logs |
 | Deployment | One artifact, one database | One image and one database per service, Kubernetes |
 
-**When a monolith is the right choice, as practiced here:** a single team, a domain whose rules must change together (a promotion touches cart, pricing and checkout at once), and a need for strong consistency. You get one transaction, one deployment, one place to debug, and refactoring across modules is a compiler-checked change instead of a coordinated API migration. **The price:** everything scales and deploys together, and without discipline the code turns into a "big ball of mud". The [planned module boundaries](#planned-next-and-why), verified by tests with Spring Modulith, address the second point.
+**When a monolith is the right choice, as practiced here:** a single team, a domain whose rules must change together (a promotion touches cart, pricing and checkout at once), and a need for strong consistency. You get one transaction, one deployment, one place to debug, and refactoring across modules is a compiler-checked change instead of a coordinated API migration. **The price:** everything scales and deploys together, and without discipline the code turns into a "big ball of mud". The [module boundaries](#architecture), verified by tests with Spring Modulith, address the second point.
 
 ---
 
@@ -100,9 +100,11 @@ graph LR
     JOBS --> DB
 ```
 
-The code is organized by business module, one package each: `catalog`, `identity`, `cart`, `pricing`, `ordering`, plus `shared` (clock, error handling, request id, scheduling). What other modules may use sits in the module's root package; everything else is in its `internal` sub-package.
+The code is organized by business module, one package each: `catalog`, `identity`, `cart`, `pricing`, `ordering`, `notifications`, plus `shared` (clock, error handling, request id, scheduling). What other modules may use sits in the module's root package; everything else is in its `internal` sub-package.
 
-The boundaries are verified by [Spring Modulith](https://spring.io/projects/spring-modulith) in `ModularityTests`: a module that reaches into another module's `internal` package, or a dependency cycle between modules, fails the build. Allowed dependencies today: `ordering` → `cart`, `pricing`, `identity`; `pricing` → `cart`, `identity`; `cart` → `catalog`, `identity`; everything → `shared`. Where a dependency would point the other way, the module publishes an event instead (identity announces a new guest, cart creates its cart). The test also writes the module diagrams to `target/spring-modulith-docs`.
+The boundaries are verified by [Spring Modulith](https://spring.io/projects/spring-modulith) in `ModularityTests`: a module that reaches into another module's `internal` package, or a dependency cycle between modules, fails the build. Allowed dependencies today: `ordering` → `cart`, `pricing`, `identity`; `pricing` → `cart`, `identity`; `cart` → `catalog`, `identity`; everything → `shared`. Where a dependency would point the other way, the module publishes an event instead (identity announces a new guest, cart creates its cart).
+
+**Domain events.** A placed order publishes `OrderPlaced`; the `notifications` module reacts with an `@ApplicationModuleListener`, asynchronously, after the checkout commits and in its own transaction, so a slow or failing notification never slows down or rolls back a purchase, and `ordering` does not know who listens. Every publication is stored in the `event_publication` table in the checkout transaction and marked complete when the listener succeeds; a failed (or interrupted) delivery stays incomplete and can be resubmitted. This is the in-process counterpart of the transactional outbox used in the microservices repository, without a broker. The test also writes the module diagrams to `target/spring-modulith-docs`.
 
 **Checkout in one transaction:**
 
@@ -112,6 +114,7 @@ The boundaries are verified by [Spring Modulith](https://spring.io/projects/spri
 4. Price the cart on the server: base total, applied strategies, coupon, 100% cap.
 5. Record the order with a snapshot of the lines and prices; its idempotency key is unique.
 6. Mark the cart `PURCHASED` and give the owner a fresh cart.
+7. Publish `OrderPlaced`, stored in the event publication registry; listeners run after the commit.
 
 If any step fails, the whole transaction rolls back, coupon use included. In the microservices repository the equivalent flow needs a saga.
 
@@ -126,7 +129,7 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 | Security | Spring Security, JWT (jjwt, HMAC) |
 | Persistence | Spring Data JPA, Hibernate, H2 (PostgreSQL planned) |
 | Scheduling | `@Scheduled` with ShedLock (JDBC provider) |
-| Modularity | Spring Modulith (verified module boundaries) |
+| Modularity | Spring Modulith (verified module boundaries, domain events with a JPA publication registry) |
 | Cross-cutting | Spring AOP (pricing audit), RFC 7807 problem details |
 | Tests | JUnit 5, MockMvc, AssertJ, Mockito, Hibernate statistics |
 
@@ -202,6 +205,7 @@ Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 4
 | `CheckoutFlowTests.lastCouponUse...` | 20 virtual threads race for the last coupon use: exactly one wins |
 | `OrderTests` | A checkout records an order whose prices do not change with the catalog; the same key twice, or ten times concurrently, gives one order and one coupon use; orders are visible only to their owner |
 | `ModularityTests` | No module uses another module's internals, no dependency cycles; writes the module diagrams |
+| `OrderEventsTests` | A placed order publishes `OrderPlaced` and the listener runs after the commit; a failed delivery stays incomplete in the registry until resubmitted |
 | `CartConcurrencyTests` | 16 concurrent first requests of a new user: all 200, one cart |
 | `CartQueryCountTests` | Reading a cart costs the same number of SQL statements with 1 or 4 products |
 | `SchedulerJobsTests` | Both jobs touch only what they must; a second trigger inside the lock window is skipped |
@@ -231,7 +235,6 @@ Each step strengthens what a monolith is good at, instead of imitating a distrib
 
 | Step | Why |
 |---|---|
-| **Modules with Spring Modulith** | The main risk of a monolith is erosion, not performance: module boundaries become a test that fails, and modules talk through in-process domain events with a publication registry (the in-process counterpart of the outbox used in the microservices repository) |
 | **PostgreSQL, Flyway, Testcontainers** | Correctness here relies on database behavior (conditional updates, row locks, constraints): the concurrency tests prove something only on the real database |
 | **Metrics and a local catalog cache** | Business metrics (coupons redeemed, checkout totals) next to technical ones; a local cache is enough in one process, Redis is used where several replicas must share it |
 | **Docker and CI** | One image, one pipeline: the operational simplicity that is the point of a monolith |

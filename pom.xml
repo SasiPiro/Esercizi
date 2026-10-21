@@ -80,6 +80,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
+		<!-- Event publication registry: events stored in the publishing transaction -->
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-starter-jpa</artifactId>
+		</dependency>
 		<!-- Module boundaries verified by a test (ModularityTests) -->
 		<dependency>
 			<groupId>org.springframework.modulith</groupId>

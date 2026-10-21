@@ -4,6 +4,7 @@ import com.ecommerce.monolith.cart.Cart;
 import com.ecommerce.monolith.cart.CartEmptyException;
 import com.ecommerce.monolith.cart.CartItem;
 import com.ecommerce.monolith.cart.CartService;
+import com.ecommerce.monolith.ordering.OrderPlaced;
 import com.ecommerce.monolith.pricing.CalculationResultDTO;
 import com.ecommerce.monolith.pricing.Coupon;
 import com.ecommerce.monolith.pricing.CouponService;
@@ -12,6 +13,7 @@ import com.ecommerce.monolith.pricing.TrackPromotion;
 import com.ecommerce.monolith.shared.AppConstants;
 import com.ecommerce.monolith.shared.TimeService;
 import org.slf4j.event.Level;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -39,15 +41,18 @@ public class PaymentService {
     private final TimeService timeService;
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
+    private final ApplicationEventPublisher events;
 
-    public PaymentService(CartService cartService, CouponService couponService, PricingEngine pricingEngine, TimeService timeService,
-            OrderRepository orderRepository, OrderMapper orderMapper) {
+    public PaymentService(CartService cartService, CouponService couponService,
+            PricingEngine pricingEngine, TimeService timeService,
+            OrderRepository orderRepository, OrderMapper orderMapper, ApplicationEventPublisher events) {
         this.cartService = cartService;
         this.couponService = couponService;
         this.pricingEngine = pricingEngine;
         this.timeService = timeService;
         this.orderRepository = orderRepository;
         this.orderMapper = orderMapper;
+        this.events = events;
     }
 
     @TrackPromotion(level = Level.DEBUG) // previews are frequent: not a business event
@@ -87,6 +92,8 @@ public class PaymentService {
         CalculationResultDTO result = pricingEngine.price(cart, current.user(), now, coupon);
         // Same transaction as the coupon redemption: no order without its redemption, and vice versa
         Order order = recordOrder(idempotencyKey, current, result, now);
+        // Stored in the publication registry in this transaction; listeners run after commit
+        events.publishEvent(new OrderPlaced(order.getId(), order.getUserId(), order.getFinalPrice()));
 
         cart.setCartStatus(Cart.CartStatus.PURCHASED);
         cartService.replacePurchasedCart(cart);
