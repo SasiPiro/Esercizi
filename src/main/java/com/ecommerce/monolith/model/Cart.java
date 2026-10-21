@@ -61,11 +61,10 @@ public class Cart {
 
     /**
      * Adds a product to the cart, or increments the quantity if the product is already present.
-     * Products are compared by id because Product does not override equals().
      */
     public void addOrIncrement(Product product, int quantity) {
         items.stream()
-                .filter(i -> i.getProduct().getId().equals(product.getId()))
+                .filter(i -> i.getProduct().equals(product))
                 .findFirst()
                 .ifPresentOrElse(
                         existing -> existing.setQuantity(existing.getQuantity() + quantity),

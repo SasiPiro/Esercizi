@@ -53,4 +53,21 @@ public class Product {
     public void setBasePrice(BigDecimal basePrice) {
         this.basePrice = basePrice;
     }
+
+    /**
+     * Equal when both have the same id. instanceof and getId() instead of getClass() and
+     * the field, so an entity and a Hibernate proxy of it are equal. Constant hashCode:
+     * the id is assigned on insert, and a hash must not change while in a Set.
+     */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Product other)) return false;
+        return id != null && id.equals(other.getId());
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

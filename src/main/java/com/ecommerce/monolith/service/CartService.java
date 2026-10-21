@@ -234,7 +234,7 @@ public class CartService {
                 .orElseThrow(() -> ProductNotFoundException.forCode(productCode));
 
         int alreadyInCart = cart.getItems().stream()
-                .filter(i -> i.getProduct().getId().equals(product.getId()))
+                .filter(i -> i.getProduct().equals(product))
                 .mapToInt(CartItem::getQuantity)
                 .sum();
         if (alreadyInCart + quantity > MAX_QUANTITY_PER_LINE) {
