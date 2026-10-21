@@ -14,10 +14,9 @@ spring:
     url: jdbc:postgresql://localhost:5432/ecommerce
     username: ecommerce
     password: ecommerce
-  # Recreates the schema and the sample data at every start: dev only
-  sql:
-    init:
-      mode: always
+  # Sample users, products, coupons and a cart, on top of the schema migrations
+  flyway:
+    locations: classpath:db/migration,classpath:db/seed
 
 app:
   cors:

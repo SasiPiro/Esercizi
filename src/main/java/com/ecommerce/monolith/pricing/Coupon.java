@@ -69,6 +69,7 @@ public class Coupon {
      * the second will fail with {@code OptimisticLockException}.
      */
     @Version
+    @Column(nullable = false)
     private Long version;
 
     // --- Enum ---

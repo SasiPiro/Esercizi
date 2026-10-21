@@ -4,7 +4,7 @@ An e-commerce backend built as a **single deployable Spring Boot application**, 
 
 It is one half of a pair. The same domain is also implemented as a distributed system in **[ecommerce-microservice](https://github.com/SasiPiro/ecommerce-microservice)**, which focuses on the problems that only exist once a system is split into services. See [Why two repositories](#why-two-repositories-monolith-vs-microservices).
 
-> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events. Next steps are PostgreSQL with Testcontainers, metrics and CI (see [Planned next](#planned-next-and-why)).
+> **Status:** the pricing, cart and checkout flow works end to end and is covered by integration tests; a checkout records an order with a price snapshot and is idempotent; module boundaries are verified with Spring Modulith and modules react to each other through domain events; the application and its tests run on PostgreSQL with Flyway migrations. Next steps are metrics, a local catalog cache, Docker and CI (see [Planned next](#planned-next-and-why)).
 
 ---
 
@@ -45,6 +45,8 @@ Each of these was a real bug in an earlier version of the code, reproduced with 
 | Reading a cart cost one query per product (N+1) | One `JOIN FETCH` query; Open-Session-in-View disabled | `CartOwnershipRepository` |
 | Jobs loaded rows, chunked them and saved them from threads | One set-based SQL statement per job | `PromotionExpiryJob`, `CartCleanupJob` |
 | Every instance ran every job | ShedLock: one execution per window across instances, timed by the database clock | `SchedulingConfig` |
+| Entities and tables drifted apart unnoticed (once every cart query failed) | The schema is created only by Flyway migrations; Hibernate validates it at startup and refuses to start on a mismatch | `db/migration` |
+| Tests ran on H2, which locks and constrains differently | Every test runs on PostgreSQL in a Testcontainers container | `TestcontainersConfiguration` |
 | A JWT secret was committed with a default value | No default; startup fails without a strong secret | `JwtUtil` |
 | A purchase left only the closed cart, linked to current prices | An order keeps product codes and unit prices as they were at checkout | `Order`, `OrderLine` |
 | A client retrying after a timeout could buy twice | `Idempotency-Key` header; the unique constraint on the key is the real guard, and a request that loses the race answers with the winner's order | `OrderService.placeOrder` |
@@ -145,7 +147,7 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 
 `spring-boot:test-run` starts `TestEcommerceMonolithApplication`, which runs the application against a PostgreSQL container started by Testcontainers: there is no database to install. To use a PostgreSQL you run yourself, `./mvnw spring-boot:run -Dspring-boot.run.profiles=dev` connects to `localhost:5432`, database, user and password `ecommerce`.
 
-The `dev` profile provides a local JWT secret, the local database settings with the sample data, and CORS for `localhost:3000` and `localhost:5173`. **Without a profile the application refuses to start** unless `JWT_SECRET` and the database settings are provided: this is intentional.
+The schema is created by the Flyway migrations in `db/migration` at startup. The `dev` profile provides a local JWT secret, the local database settings, the sample data (`db/seed`, applied only in `dev`), and CORS for `localhost:3000` and `localhost:5173`. **Without a profile the application refuses to start** unless `JWT_SECRET` and the database settings are provided: this is intentional.
 
 Seed users (local only): `JAY` / `jay-password` (VIP, admin) and `admin` / `admin-password` (VIP, admin). Products `P001`-`P004`, coupons `SAVE10` (one use left) and `FLASH50`.
 
@@ -241,7 +243,6 @@ Each step strengthens what a monolith is good at, instead of imitating a distrib
 
 | Step | Why |
 |---|---|
-| **PostgreSQL, Flyway, Testcontainers** | Correctness here relies on database behavior (conditional updates, row locks, constraints): the concurrency tests prove something only on the real database |
 | **Metrics and a local catalog cache** | Business metrics (coupons redeemed, checkout totals) next to technical ones; a local cache is enough in one process, Redis is used where several replicas must share it |
 | **Docker and CI** | One image, one pipeline: the operational simplicity that is the point of a monolith |
 

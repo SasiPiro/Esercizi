@@ -20,6 +20,7 @@ public class CartItem {
     private Cart cart;
 
     @Min(1)
+    @Column(nullable = false)
     private Integer quantity;
 
     public Long getId() {

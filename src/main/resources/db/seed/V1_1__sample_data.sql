@@ -1,3 +1,6 @@
+-- Sample data for local development and tests only: the dev profile adds db/seed
+-- to spring.flyway.locations. Production runs db/migration alone.
+
 INSERT INTO product (code, base_price) VALUES
 ('P001', 10.50),
 ('P002', 25.99),

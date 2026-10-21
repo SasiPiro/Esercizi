@@ -3,9 +3,11 @@ spring:
     name: ecommerce-monolith
   # PostgreSQL. No default on purpose: set SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME
   # and SPRING_DATASOURCE_PASSWORD (the dev profile points to a local database).
+  # The schema is created by the Flyway migrations in db/migration. Hibernate only
+  # validates it: a mismatch between entities and tables fails at startup.
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: validate
     show-sql: false
     # Do not keep a DB connection open for the whole HTTP request and do not
     # lazy-load from controllers: every query is explicit in the service layer.
