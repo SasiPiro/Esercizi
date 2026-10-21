@@ -4,7 +4,6 @@ import com.ecommerce.monolith.identity.AuthFacade;
 import com.ecommerce.monolith.identity.User;
 import com.ecommerce.monolith.identity.UserRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -16,9 +15,12 @@ import static com.ecommerce.monolith.shared.AppConstants.ERROR_ORDER_NOT_FOUND;
  * Orders of the authenticated principal (user or guest): idempotent checkout and history.
  * Every lookup is scoped to the caller: another principal's order is reported as not found,
  * not as forbidden, so order ids cannot be probed.
+ *
+ * <p>
+ * No class-level transaction: {@link #placeOrder} must run outside any transaction scope.
+ * </p>
  */
 @Service
-@Transactional(readOnly = true)
 public class OrderService {
 
     private final OrderRepository orderRepository;
@@ -52,11 +54,13 @@ public class OrderService {
      * behind; whatever the reason, it answers with the winner's order.</li>
      * </ol>
      * No transaction here: the checkout runs in its own, so after a lost race the lookup
-     * sees the order the winner committed.
+     * sees the order the winner committed. Not even a NOT_SUPPORTED scope: inside one, the
+     * lookups would share an EntityManager that keeps its connection until the method ends,
+     * so every request would hold two pooled connections during the checkout, and a burst of
+     * retries could exhaust the pool and wait on itself.
      *
      * @throws IdempotencyKeyConflictException if the key was used by another principal
      */
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public PlacedOrder placeOrder(String idempotencyKey, String couponCode) {
         Optional<OrderDTO> previous = findPlacedWith(idempotencyKey);
         if (previous.isPresent()) {
@@ -83,6 +87,7 @@ public class OrderService {
     }
 
     /** The caller's orders, newest first. */
+    @Transactional(readOnly = true)
     public List<OrderDTO> list() {
         Owner owner = currentOwner();
         List<Order> orders = owner.userId() != null
@@ -94,6 +99,7 @@ public class OrderService {
     /**
      * @throws OrderNotFoundException if the order does not exist or belongs to someone else
      */
+    @Transactional(readOnly = true)
     public OrderDTO get(Long id) {
         Owner owner = currentOwner();
         return orderRepository.findWithLinesById(id)
