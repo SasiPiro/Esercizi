@@ -13,6 +13,7 @@ public final class AppConstants {
     public static final String ERROR_PRODUCT_NOT_IN_CART = "Product not in the cart: ";
     public static final String ERROR_CART_EMPTY = "Cart is empty";
     public static final String ERROR_USER_NOT_FOUND = "User not found";
+    public static final String ERROR_ORDER_NOT_FOUND = "Order not found: ";
     public static final String ERROR_PROMOTION_NOT_FOUND = "Promotion code not found or not active";
     public static final String ERROR_PROMOTION_EXPIRED = "Promotion has expired or reached its usage limit";
     public static final String ERROR_COUPON_NOT_CUMULATIVE = "Coupon cannot be combined with active seasonal promotions";
@@ -25,6 +26,7 @@ public final class AppConstants {
     public static final URI TYPE_VALIDATION_ERROR = URI.create(BASE_URL + "validation-error");
     public static final URI TYPE_GENERIC_ERROR = URI.create(BASE_URL + "internal-server-error");
     public static final URI TYPE_PRODUCT_NOT_FOUND = URI.create(BASE_URL + "product-not-found");
+    public static final URI TYPE_ORDER_NOT_FOUND = URI.create(BASE_URL + "order-not-found");
     public static final URI TYPE_CART_EMPTY = URI.create(BASE_URL + "cart-empty");
     public static final URI TYPE_PROMOTION_NOT_FOUND = URI.create(BASE_URL + "promotion-not-found");
     public static final URI TYPE_PROMOTION_EXPIRED = URI.create(BASE_URL + "promotion-expired");

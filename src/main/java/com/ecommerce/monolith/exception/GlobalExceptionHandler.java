@@ -40,6 +40,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createProblemDetail(ex, HttpStatus.NOT_FOUND, ERROR_PRODUCT_NOT_FOUND, TYPE_PRODUCT_NOT_FOUND);
     }
 
+    @ExceptionHandler(OrderNotFoundException.class)
+    public ProblemDetail handleOrderNotFound(OrderNotFoundException ex) {
+        return createProblemDetail(ex, HttpStatus.NOT_FOUND, "Order not found", TYPE_ORDER_NOT_FOUND);
+    }
+
     @ExceptionHandler(CartEmptyException.class)
     public ProblemDetail handleCartEmpty(CartEmptyException ex) {
         return createProblemDetail(ex, HttpStatus.BAD_REQUEST, ERROR_CART_EMPTY, TYPE_CART_EMPTY);

@@ -13,5 +13,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findWithLinesById(Long id);
 
     @EntityGraph(attributePaths = "lines")
-    List<Order> findByAnonymousId(String anonymousId);
+    List<Order> findByUserIdOrderByPlacedAtDescIdDesc(Long userId);
+
+    @EntityGraph(attributePaths = "lines")
+    List<Order> findByAnonymousIdOrderByPlacedAtDescIdDesc(String anonymousId);
 }

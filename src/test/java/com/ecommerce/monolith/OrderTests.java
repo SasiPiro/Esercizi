@@ -26,7 +26,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -62,7 +64,7 @@ class OrderTests {
 
         checkout(guest);
 
-        List<Order> orders = orderRepository.findByAnonymousId(anonymousIdOf(guest));
+        List<Order> orders = orderRepository.findByAnonymousIdOrderByPlacedAtDescIdDesc(anonymousIdOf(guest));
         assertThat(orders).hasSize(1);
         Order order = orders.getFirst();
         assertThat(order.getUserId()).isNull();
@@ -88,7 +90,7 @@ class OrderTests {
         p.setBasePrice(new BigDecimal("99.99"));
         productRepository.save(p);
 
-        Order order = orderRepository.findByAnonymousId(anonymousIdOf(guest)).getFirst();
+        Order order = orderRepository.findByAnonymousIdOrderByPlacedAtDescIdDesc(anonymousIdOf(guest)).getFirst();
         assertThat(order.getLines().getFirst().getUnitPrice()).isEqualByComparingTo("20.00");
         assertThat(order.getFinalPrice()).isEqualByComparingTo("40.00");
     }
@@ -99,7 +101,60 @@ class OrderTests {
         mvc.perform(post("/api/v1/checkout").header("Authorization", "Bearer " + guest))
                 .andExpect(status().isBadRequest()); // empty cart
 
-        assertThat(orderRepository.findByAnonymousId(anonymousIdOf(guest))).isEmpty();
+        assertThat(orderRepository.findByAnonymousIdOrderByPlacedAtDescIdDesc(anonymousIdOf(guest))).isEmpty();
+    }
+
+    // ---------------------------------------------------------------- history
+
+    @Test
+    void ordersAreVisibleOnlyToTheirOwner() throws Exception {
+        String alice = newUser();
+        String bob = newUser();
+        addItem(alice, "P002", 1);
+        checkout(alice);
+
+        long aliceOrder = ((Number) JsonPath.read(mvc.perform(get("/api/v1/orders").header("Authorization", "Bearer " + alice))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andReturn().getResponse().getContentAsString(), "$[0].id")).longValue();
+
+        mvc.perform(get("/api/v1/orders/" + aliceOrder).header("Authorization", "Bearer " + alice))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lines[0].productCode").value("P002"));
+
+        mvc.perform(get("/api/v1/orders/" + aliceOrder).header("Authorization", "Bearer " + bob))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/orders").header("Authorization", "Bearer " + bob))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        String guest = guestToken();
+        mvc.perform(get("/api/v1/orders/" + aliceOrder).header("Authorization", "Bearer " + guest))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/orders/" + aliceOrder)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void historyShowsTheSnapshotNewestFirst() throws Exception {
+        String product = newProduct("5.00");
+        String guest = guestToken();
+        addItem(guest, product, 2);
+        checkout(guest);
+        when(timeService.now()).thenReturn(NOW.plusSeconds(60));
+        addItem(guest, "P001", 1);
+        checkout(guest);
+
+        Product p = productRepository.findByCode(product).orElseThrow();
+        p.setBasePrice(new BigDecimal("50.00"));
+        productRepository.save(p);
+
+        mvc.perform(get("/api/v1/orders").header("Authorization", "Bearer " + guest))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].lines[0].productCode").value("P001"))
+                .andExpect(jsonPath("$[1].lines[0].productCode").value(product))
+                .andExpect(jsonPath("$[1].lines[0].unitPrice").value(5.00))
+                .andExpect(jsonPath("$[1].finalPrice").value(10.00))
+                .andExpect(jsonPath("$[1].appliedStrategies").isEmpty());
     }
 
     // ---------------------------------------------------------------- helpers
@@ -118,6 +173,15 @@ class OrderTests {
     private String guestToken() throws Exception {
         return JsonPath.read(mvc.perform(post("/api/v1/auth/guest"))
                 .andReturn().getResponse().getContentAsString(), "$.token");
+    }
+
+    private String newUser() throws Exception {
+        String credentials = "{\"username\":\"or" + UUID.randomUUID().toString().substring(0, 8)
+                + "\",\"password\":\"secret123\"}";
+        mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(credentials))
+                .andExpect(status().isCreated());
+        return JsonPath.read(mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content(credentials)).andReturn().getResponse().getContentAsString(), "$.token");
     }
 
     private String anonymousIdOf(String guestToken) {

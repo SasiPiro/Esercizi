@@ -172,9 +172,11 @@ curl -s -X POST "localhost:8080/api/v1/checkout?couponCode=FLASH50" -H "Authoriz
 | DELETE | `/api/v1/cart/items/{productCode}` | user or guest | Remove a product |
 | POST | `/api/v1/cart/merge` + header `X-Guest-Token` | user | Merge the guest cart into the user cart |
 | GET | `/api/v1/checkout/quote?couponCode=` | user or guest | Price preview, never redeems the coupon |
-| POST | `/api/v1/checkout?couponCode=` | user or guest | Confirm the purchase |
+| POST | `/api/v1/checkout?couponCode=` | user or guest | Confirm the purchase and record the order |
+| GET | `/api/v1/orders` | user or guest | The caller's orders, newest first |
+| GET | `/api/v1/orders/{id}` | user or guest | One of the caller's orders (404 for anyone else's) |
 
-Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 400 validation, 401 authentication, 403 authorization, 404 not found, 409 conflicts (duplicate username, concurrent checkout, non-cumulative coupon), 410 expired coupon. Every response carries an `X-Request-Id` header, also printed on every log line of that request.
+Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 400 validation, 401 authentication, 403 authorization, 404 not found (also for another shopper's order), 409 conflicts (duplicate username, concurrent checkout, non-cumulative coupon), 410 expired coupon. Every response carries an `X-Request-Id` header, also printed on every log line of that request.
 
 ---
 
@@ -188,6 +190,7 @@ Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 4
 |---|---|
 | `CheckoutFlowTests` | Login, guest cart, server-side pricing (a tampered body is ignored), coupons, merge |
 | `CheckoutFlowTests.lastCouponUse...` | 20 virtual threads race for the last coupon use: exactly one wins |
+| `OrderTests` | A checkout records an order whose prices do not change with the catalog; orders are visible only to their owner |
 | `CartConcurrencyTests` | 16 concurrent first requests of a new user: all 200, one cart |
 | `CartQueryCountTests` | Reading a cart costs the same number of SQL statements with 1 or 4 products |
 | `SchedulerJobsTests` | Both jobs touch only what they must; a second trigger inside the lock window is skipped |
