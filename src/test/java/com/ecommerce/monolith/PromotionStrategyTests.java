@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -100,7 +101,8 @@ class PromotionStrategyTests {
         when(timeService.now()).thenReturn(Instant.parse("2027-11-26T12:00:00Z"));
         String guest = JsonPath.read(mvc.perform(post("/api/v1/auth/guest"))
                 .andReturn().getResponse().getContentAsString(), "$.token");
-        mvc.perform(post("/api/v1/cart/add").param("productCode", "P001").param("quantity", "2")
+        mvc.perform(post("/api/v1/cart/items").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"productCode\":\"P001\",\"quantity\":2}")
                 .header("Authorization", "Bearer " + guest)).andExpect(status().isOk()); // 21.00
 
         mvc.perform(get("/api/v1/checkout/quote").header("Authorization", "Bearer " + guest))

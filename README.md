@@ -147,7 +147,8 @@ TOKEN=$(curl -s -X POST localhost:8080/api/v1/auth/login \
   -d '{"username":"admin","password":"admin-password"}' | jq -r .token)
 
 # 2. Add products
-curl -s -X POST "localhost:8080/api/v1/cart/add?productCode=P002&quantity=2" -H "Authorization: Bearer $TOKEN"
+curl -s -X POST localhost:8080/api/v1/cart/items -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"productCode":"P002","quantity":2}'
 
 # 3. Preview the total with a coupon (does not consume it)
 curl -s "localhost:8080/api/v1/checkout/quote?couponCode=FLASH50" -H "Authorization: Bearer $TOKEN"
@@ -166,8 +167,9 @@ curl -s -X POST "localhost:8080/api/v1/checkout?couponCode=FLASH50" -H "Authoriz
 | POST | `/api/v1/auth/login` | public | Returns a JWT |
 | POST | `/api/v1/auth/guest` | public | Returns a guest JWT and creates the guest cart |
 | GET | `/api/v1/cart` | user or guest | The caller's cart |
-| POST | `/api/v1/cart/add?productCode=&quantity=` | user or guest | Add a product (1-99 units per line) |
-| POST | `/api/v1/cart/remove?productCode=` | user or guest | Remove a product |
+| POST | `/api/v1/cart/items` + body `{"productCode","quantity"}` | user or guest | Add a product (1-99 units per line) |
+| PATCH | `/api/v1/cart/items/{productCode}` + body `{"quantity"}` | user or guest | Set the quantity of a line (1-99) |
+| DELETE | `/api/v1/cart/items/{productCode}` | user or guest | Remove a product |
 | POST | `/api/v1/cart/merge` + header `X-Guest-Token` | user | Merge the guest cart into the user cart |
 | GET | `/api/v1/checkout/quote?couponCode=` | user or guest | Price preview, never redeems the coupon |
 | POST | `/api/v1/checkout?couponCode=` | user or guest | Confirm the purchase |

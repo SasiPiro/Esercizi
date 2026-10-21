@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 import java.util.Optional;
+import static com.ecommerce.monolith.constants.AppConstants.ERROR_PRODUCT_NOT_IN_CART;
 import static com.ecommerce.monolith.constants.AppConstants.ERROR_USER_NOT_FOUND;
 
 /**
@@ -242,6 +243,28 @@ public class CartService {
                     "At most " + MAX_QUANTITY_PER_LINE + " units per product, already in cart: " + alreadyInCart);
         }
         cart.addOrIncrement(product, quantity);
+        Cart savedCart = cartRepository.save(cart);
+        return cartMapper.toDto(savedCart, user, anonymousId);
+    }
+
+    /**
+     * Sets the quantity of a line already in the cart.
+     *
+     * @throws ProductNotFoundException if the product is not in the cart
+     */
+    @Transactional
+    public CartDTO updateItemQuantity(String productCode, int quantity) {
+        String principal = authFacade.getCurrentUsername();
+        User user = userRepository.findByUsernameWithRoles(principal).orElse(null);
+        String anonymousId = (user == null) ? principal : null;
+        Cart cart = getCartEntity(anonymousId, user);
+
+        CartItem line = cart.getItems().stream()
+                .filter(item -> item.getProduct().getCode().equals(productCode))
+                .findFirst()
+                .orElseThrow(() -> new ProductNotFoundException(ERROR_PRODUCT_NOT_IN_CART + productCode));
+        line.setQuantity(quantity);
+
         Cart savedCart = cartRepository.save(cart);
         return cartMapper.toDto(savedCart, user, anonymousId);
     }

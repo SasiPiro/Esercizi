@@ -26,7 +26,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -129,14 +131,56 @@ class CheckoutFlowTests {
     @Test
     void invalidQuantitiesAre400() throws Exception {
         String guest = guestToken();
-        mvc.perform(post("/api/v1/cart/add").param("productCode", "P001").param("quantity", "-5")
-                        .header("Authorization", bearer(guest)))
+        mvc.perform(post("/api/v1/cart/items").header("Authorization", bearer(guest))
+                        .contentType(MediaType.APPLICATION_JSON).content(item("P001", -5)))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/cart/items").header("Authorization", bearer(guest))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"productCode\":\"P001\"}"))
                 .andExpect(status().isBadRequest());
 
         addItem(guest, "P001", 99);
+        mvc.perform(post("/api/v1/cart/items").header("Authorization", bearer(guest))
+                        .contentType(MediaType.APPLICATION_JSON).content(item("P001", 1)))
+                .andExpect(status().isBadRequest());
+        mvc.perform(patch("/api/v1/cart/items/P001").header("Authorization", bearer(guest))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"quantity\":100}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void cartItemsAreAddedUpdatedAndRemovedAsAResource() throws Exception {
+        String guest = guestToken();
+        addItem(guest, "P001", 2);
+        addItem(guest, "P002", 1);
+
+        mvc.perform(patch("/api/v1/cart/items/P001").header("Authorization", bearer(guest))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"quantity\":5}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.product.code == 'P001')].quantity").value(5));
+
+        mvc.perform(delete("/api/v1/cart/items/P002").header("Authorization", bearer(guest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].product.code").value("P001"));
+
+        // a line that is not in the cart cannot be updated
+        mvc.perform(patch("/api/v1/cart/items/P003").header("Authorization", bearer(guest))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"quantity\":1}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/v1/cart/items").header("Authorization", bearer(guest))
+                        .contentType(MediaType.APPLICATION_JSON).content(item("NOPE", 1)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void verbStyleCartEndpointsAreGone() throws Exception {
+        String guest = guestToken();
         mvc.perform(post("/api/v1/cart/add").param("productCode", "P001").param("quantity", "1")
                         .header("Authorization", bearer(guest)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/v1/cart/remove").param("productCode", "P001")
+                        .header("Authorization", bearer(guest)))
+                .andExpect(status().isNotFound());
     }
 
     // ---------------------------------------------------------------- coupons
@@ -245,9 +289,13 @@ class CheckoutFlowTests {
     }
 
     private void addItem(String token, String productCode, int quantity) throws Exception {
-        mvc.perform(post("/api/v1/cart/add").param("productCode", productCode)
-                        .param("quantity", String.valueOf(quantity)).header("Authorization", bearer(token)))
+        mvc.perform(post("/api/v1/cart/items").header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(item(productCode, quantity)))
                 .andExpect(status().isOk());
+    }
+
+    private static String item(String productCode, int quantity) {
+        return "{\"productCode\":\"" + productCode + "\",\"quantity\":" + quantity + "}";
     }
 
     private String newCoupon(String discount, int usageLimit) {

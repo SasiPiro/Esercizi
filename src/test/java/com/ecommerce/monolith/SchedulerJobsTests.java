@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -88,7 +89,8 @@ class SchedulerJobsTests {
     private long guestCartWithOneItem() throws Exception {
         String token = JsonPath.read(mvc.perform(post("/api/v1/auth/guest"))
                 .andReturn().getResponse().getContentAsString(), "$.token");
-        mvc.perform(post("/api/v1/cart/add").param("productCode", "P001").param("quantity", "1")
+        mvc.perform(post("/api/v1/cart/items").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"productCode\":\"P001\",\"quantity\":1}")
                 .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
         Number id = JsonPath.read(mvc.perform(get("/api/v1/cart").header("Authorization", "Bearer " + token))
                 .andReturn().getResponse().getContentAsString(), "$.id");

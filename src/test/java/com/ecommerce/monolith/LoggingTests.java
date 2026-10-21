@@ -90,7 +90,8 @@ class LoggingTests {
     @Test
     void checkoutLineUsesADecimalPointWhateverTheServerLocale(CapturedOutput output) throws Exception {
         String user = loginNewUser();
-        mvc.perform(post("/api/v1/cart/add").param("productCode", "P001").param("quantity", "3")
+        mvc.perform(post("/api/v1/cart/items").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"productCode\":\"P001\",\"quantity\":3}")
                 .header("Authorization", "Bearer " + user)).andExpect(status().isOk());
         int from = output.getOut().length();
         mvc.perform(post("/api/v1/checkout").header("Authorization", "Bearer " + user))

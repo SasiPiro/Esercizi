@@ -10,6 +10,7 @@ public final class AppConstants {
     // Error messages
     public static final String ERROR_PRODUCT_NOT_FOUND = "Product not found";
     public static final String ERROR_PRODUCT_NOT_FOUND_FOR_CODE = "Product not found for code ";
+    public static final String ERROR_PRODUCT_NOT_IN_CART = "Product not in the cart: ";
     public static final String ERROR_CART_EMPTY = "Cart is empty";
     public static final String ERROR_USER_NOT_FOUND = "User not found";
     public static final String ERROR_PROMOTION_NOT_FOUND = "Promotion code not found or not active";

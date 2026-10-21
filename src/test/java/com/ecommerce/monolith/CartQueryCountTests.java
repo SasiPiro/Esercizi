@@ -60,7 +60,8 @@ class CartQueryCountTests {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String token = JsonPath.read(body, "$.token");
         for (String code : productCodes) {
-            mvc.perform(post("/api/v1/cart/add").param("productCode", code).param("quantity", "1")
+            mvc.perform(post("/api/v1/cart/items").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"productCode\":\"" + code + "\",\"quantity\":1}")
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk());
         }

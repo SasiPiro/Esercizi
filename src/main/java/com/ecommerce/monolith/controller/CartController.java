@@ -1,10 +1,11 @@
 package com.ecommerce.monolith.controller;
 
+import com.ecommerce.monolith.dto.AddCartItemRequestDTO;
 import com.ecommerce.monolith.dto.CartDTO;
+import com.ecommerce.monolith.dto.UpdateCartItemRequestDTO;
 import com.ecommerce.monolith.security.JwtUtil;
 import com.ecommerce.monolith.service.CartService;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.*;
@@ -26,14 +27,21 @@ public class CartController {
         return cartService.getOrCreateCart();
     }
 
-    @PostMapping("/add")
-    public CartDTO addItem(@RequestParam @NotBlank @Size(max = 64) String productCode,
-            @RequestParam @Min(1) @Max(CartService.MAX_QUANTITY_PER_LINE) int quantity) {
-        return cartService.addItem(productCode, quantity);
+    /** Adds units of a product, or more units to its existing line. Returns the whole cart. */
+    @PostMapping("/items")
+    public CartDTO addItem(@Valid @RequestBody AddCartItemRequestDTO request) {
+        return cartService.addItem(request.productCode(), request.quantity());
     }
 
-    @PostMapping("/remove")
-    public CartDTO removeItem(@RequestParam @NotBlank @Size(max = 64) String productCode) {
+    /** Sets the quantity of a line already in the cart. */
+    @PatchMapping("/items/{productCode}")
+    public CartDTO updateItem(@PathVariable @NotBlank @Size(max = 64) String productCode,
+            @Valid @RequestBody UpdateCartItemRequestDTO request) {
+        return cartService.updateItemQuantity(productCode, request.quantity());
+    }
+
+    @DeleteMapping("/items/{productCode}")
+    public CartDTO removeItem(@PathVariable @NotBlank @Size(max = 64) String productCode) {
         return cartService.removeItem(productCode);
     }
 
