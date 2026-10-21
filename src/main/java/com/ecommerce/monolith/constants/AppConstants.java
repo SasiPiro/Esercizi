@@ -8,9 +8,6 @@ public final class AppConstants {
     private AppConstants() {
     } // non-instantiable
 
-    // Header
-    public static final String SESSION_HEADER = "X-SESSION-ID";
-
     // Error messages
     public static final String ERROR_PRODUCT_NOT_FOUND = "Product not found";
     public static final String ERROR_PRODUCT_NOT_FOUND_FOR_CODE = "Product not found for code ";
@@ -18,7 +15,6 @@ public final class AppConstants {
     public static final String ERROR_USER_NOT_FOUND = "User not found";
     public static final String ERROR_PROMOTION_NOT_FOUND = "Promotion code not found or not active";
     public static final String ERROR_PROMOTION_EXPIRED = "Promotion has expired or reached its usage limit";
-    public static final String ERROR_CONCURRENT_PROMOTION = "Promotion was claimed by another user. Please try again";
     public static final String ERROR_COUPON_NOT_CUMULATIVE = "Coupon cannot be combined with active seasonal promotions";
     public static final String ERROR_INVALID_CREDENTIALS = "Invalid username or password";
     public static final String ERROR_MISSING_RESOURCE = "One or more necessary resources are missing";
@@ -32,7 +28,6 @@ public final class AppConstants {
     public static final URI TYPE_CART_EMPTY = URI.create(BASE_URL + "cart-empty");
     public static final URI TYPE_PROMOTION_NOT_FOUND = URI.create(BASE_URL + "promotion-not-found");
     public static final URI TYPE_PROMOTION_EXPIRED = URI.create(BASE_URL + "promotion-expired");
-    public static final URI TYPE_CONCURRENT_PROMOTION = URI.create(BASE_URL + "concurrent-promotion-access");
     public static final URI TYPE_COUPON_NOT_CUMULATIVE = URI.create(BASE_URL + "coupon-not-cumulative");
     public static final URI TYPE_MISSING_RESOURCE = URI.create(BASE_URL + "missing-resource");
     public static final URI TYPE_UNAUTHORIZED = URI.create(BASE_URL + "unauthorized");

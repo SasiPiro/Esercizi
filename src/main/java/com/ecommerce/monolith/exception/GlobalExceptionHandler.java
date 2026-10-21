@@ -55,11 +55,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createProblemDetail(ex, HttpStatus.GONE, ERROR_PROMOTION_EXPIRED, TYPE_PROMOTION_EXPIRED);
     }
 
-    @ExceptionHandler(ConcurrentPromotionAccessException.class)
-    public ProblemDetail handleConcurrentPromotion(ConcurrentPromotionAccessException ex) {
-        return createProblemDetail(ex, HttpStatus.CONFLICT, ERROR_CONCURRENT_PROMOTION, TYPE_CONCURRENT_PROMOTION);
-    }
-
     @ExceptionHandler(CouponNotCumulativeException.class)
     public ProblemDetail handleCouponNotCumulative(CouponNotCumulativeException ex) {
         return createProblemDetail(ex, HttpStatus.CONFLICT, ERROR_COUPON_NOT_CUMULATIVE, TYPE_COUPON_NOT_CUMULATIVE);
