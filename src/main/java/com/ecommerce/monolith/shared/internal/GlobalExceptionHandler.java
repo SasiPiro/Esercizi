@@ -1,16 +1,6 @@
 package com.ecommerce.monolith.shared.internal;
 
-import com.ecommerce.monolith.cart.CartCheckoutConflictException;
-import com.ecommerce.monolith.cart.CartEmptyException;
-import com.ecommerce.monolith.catalog.ProductNotFoundException;
-import com.ecommerce.monolith.identity.UserNotFoundException;
-import com.ecommerce.monolith.identity.internal.DuplicateResourceException;
-import com.ecommerce.monolith.ordering.internal.IdempotencyKeyConflictException;
-import com.ecommerce.monolith.ordering.internal.OrderNotFoundException;
-import com.ecommerce.monolith.pricing.CouponNotCumulativeException;
-import com.ecommerce.monolith.pricing.PromotionExpiredException;
-import com.ecommerce.monolith.pricing.PromotionNotFoundException;
-import com.ecommerce.monolith.shared.MissingResourceException;
+import com.ecommerce.monolith.shared.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,60 +30,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Value("${spring.application.name:ecommerce-monolith}")
     private String serviceName;
 
-    // --- 1. CUSTOM EXCEPTION HANDLING ---
-    @ExceptionHandler(UserNotFoundException.class)
-    public ProblemDetail handleUserNotFound(UserNotFoundException ex) {
-        return createProblemDetail(ex, HttpStatus.NOT_FOUND, ERROR_USER_NOT_FOUND, TYPE_USER_NOT_FOUND);
-    }
-
-    @ExceptionHandler(ProductNotFoundException.class)
-    public ProblemDetail handleProductNotFound(ProductNotFoundException ex) {
-        return createProblemDetail(ex, HttpStatus.NOT_FOUND, ERROR_PRODUCT_NOT_FOUND, TYPE_PRODUCT_NOT_FOUND);
-    }
-
-    @ExceptionHandler(OrderNotFoundException.class)
-    public ProblemDetail handleOrderNotFound(OrderNotFoundException ex) {
-        return createProblemDetail(ex, HttpStatus.NOT_FOUND, "Order not found", TYPE_ORDER_NOT_FOUND);
-    }
-
-    @ExceptionHandler(CartEmptyException.class)
-    public ProblemDetail handleCartEmpty(CartEmptyException ex) {
-        return createProblemDetail(ex, HttpStatus.BAD_REQUEST, ERROR_CART_EMPTY, TYPE_CART_EMPTY);
-    }
-
-    @ExceptionHandler(PromotionNotFoundException.class)
-    public ProblemDetail handlePromotionNotFound(PromotionNotFoundException ex) {
-        return createProblemDetail(ex, HttpStatus.NOT_FOUND, ERROR_PROMOTION_NOT_FOUND, TYPE_PROMOTION_NOT_FOUND);
-    }
-
-    @ExceptionHandler(PromotionExpiredException.class)
-    public ProblemDetail handlePromotionExpired(PromotionExpiredException ex) {
-        return createProblemDetail(ex, HttpStatus.GONE, ERROR_PROMOTION_EXPIRED, TYPE_PROMOTION_EXPIRED);
-    }
-
-    @ExceptionHandler(CouponNotCumulativeException.class)
-    public ProblemDetail handleCouponNotCumulative(CouponNotCumulativeException ex) {
-        return createProblemDetail(ex, HttpStatus.CONFLICT, ERROR_COUPON_NOT_CUMULATIVE, TYPE_COUPON_NOT_CUMULATIVE);
-    }
-
-    @ExceptionHandler(DuplicateResourceException.class)
-    public ProblemDetail handleDuplicateResource(DuplicateResourceException ex) {
-        return createProblemDetail(ex, HttpStatus.CONFLICT, "Resource already exists", TYPE_DUPLICATE_RESOURCE);
-    }
-
-    @ExceptionHandler(CartCheckoutConflictException.class)
-    public ProblemDetail handleCheckoutConflict(CartCheckoutConflictException ex) {
-        return createProblemDetail(ex, HttpStatus.CONFLICT, "Checkout conflict", TYPE_CHECKOUT_CONFLICT);
-    }
-
-    @ExceptionHandler(MissingResourceException.class)
-    public ProblemDetail handleMissingResource(MissingResourceException ex) {
-        return createProblemDetail(ex, HttpStatus.BAD_REQUEST, ERROR_MISSING_RESOURCE, TYPE_MISSING_RESOURCE);
-    }
-
-    @ExceptionHandler(IdempotencyKeyConflictException.class)
-    public ProblemDetail handleIdempotencyKeyConflict(IdempotencyKeyConflictException ex) {
-        return createProblemDetail(ex, HttpStatus.CONFLICT, "Idempotency key already used", TYPE_IDEMPOTENCY_KEY_REUSED);
+    // --- 1. BUSINESS RULES ---
+    // Every module's exceptions extend BusinessException and carry status, title and type,
+    // so this handler does not depend on the modules.
+    @ExceptionHandler(BusinessException.class)
+    public ProblemDetail handleBusinessException(BusinessException ex) {
+        return createProblemDetail(ex, ex.getStatus(), ex.getTitle(), ex.getType());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

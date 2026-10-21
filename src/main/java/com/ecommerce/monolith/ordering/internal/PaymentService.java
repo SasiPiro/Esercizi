@@ -1,11 +1,9 @@
 package com.ecommerce.monolith.ordering.internal;
 
 import com.ecommerce.monolith.cart.Cart;
-import com.ecommerce.monolith.cart.CartCheckoutConflictException;
 import com.ecommerce.monolith.cart.CartEmptyException;
 import com.ecommerce.monolith.cart.CartItem;
 import com.ecommerce.monolith.cart.CartService;
-import com.ecommerce.monolith.cart.internal.CartRepository;
 import com.ecommerce.monolith.pricing.CalculationResultDTO;
 import com.ecommerce.monolith.pricing.Coupon;
 import com.ecommerce.monolith.pricing.CouponService;
@@ -36,18 +34,15 @@ import java.util.Optional;
 public class PaymentService {
 
     private final CartService cartService;
-    private final CartRepository cartRepository;
     private final CouponService couponService;
     private final PricingEngine pricingEngine;
     private final TimeService timeService;
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
 
-    public PaymentService(CartService cartService, CartRepository cartRepository,
-            CouponService couponService, PricingEngine pricingEngine, TimeService timeService,
+    public PaymentService(CartService cartService, CouponService couponService, PricingEngine pricingEngine, TimeService timeService,
             OrderRepository orderRepository, OrderMapper orderMapper) {
         this.cartService = cartService;
-        this.cartRepository = cartRepository;
         this.couponService = couponService;
         this.pricingEngine = pricingEngine;
         this.timeService = timeService;
@@ -80,9 +75,7 @@ public class PaymentService {
             throw new CartEmptyException(AppConstants.ERROR_CART_EMPTY);
         }
         // Atomic guard against double-submitted checkouts of the same cart
-        if (cartRepository.claimForCheckout(cart.getId()) == 0) {
-            throw new CartCheckoutConflictException("Cart is already being checked out");
-        }
+        cartService.claimForCheckout(cart);
 
         Optional<Coupon> coupon = Optional.empty();
         if (StringUtils.hasText(couponCode)) {

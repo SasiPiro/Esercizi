@@ -1,7 +1,7 @@
 package com.ecommerce.monolith.cart.internal;
 
 import com.ecommerce.monolith.cart.CartService;
-import com.ecommerce.monolith.identity.internal.JwtUtil;
+import com.ecommerce.monolith.identity.AuthFacade;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -12,11 +12,11 @@ import org.springframework.web.bind.annotation.*;
 public class CartController {
 
     private final CartService cartService;
-    private final JwtUtil jwtUtil;
+    private final AuthFacade authFacade;
 
-    public CartController(CartService cartService, JwtUtil jwtUtil) {
+    public CartController(CartService cartService, AuthFacade authFacade) {
         this.cartService = cartService;
-        this.jwtUtil = jwtUtil;
+        this.authFacade = authFacade;
     }
 
     @GetMapping
@@ -53,6 +53,6 @@ public class CartController {
      */
     @PostMapping("/merge")
     public CartDTO mergeCart(@RequestHeader("X-Guest-Token") String guestToken) {
-        return cartService.mergeGuestCartIntoUserCart(jwtUtil.extractVerifiedAnonymousId(guestToken));
+        return cartService.mergeGuestCartIntoUserCart(authFacade.verifiedGuestId(guestToken));
     }
 }

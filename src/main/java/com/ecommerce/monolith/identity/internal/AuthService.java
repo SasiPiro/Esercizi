@@ -1,11 +1,13 @@
 package com.ecommerce.monolith.identity.internal;
 
+import com.ecommerce.monolith.identity.GuestSessionStarted;
 import com.ecommerce.monolith.identity.Role;
 import com.ecommerce.monolith.identity.User;
 import com.ecommerce.monolith.identity.UserNotFoundException;
 import com.ecommerce.monolith.identity.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -14,6 +16,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
@@ -27,6 +31,7 @@ public class AuthService {
         private final AuthenticationManager authenticationManager;
         private final JwtUtil jwtUtil;
         private final UserMapper userMapper;
+        private final ApplicationEventPublisher events;
 
         public AuthService(
                         UserRepository userRepository,
@@ -34,13 +39,27 @@ public class AuthService {
                         PasswordEncoder passwordEncoder,
                         AuthenticationManager authenticationManager,
                         JwtUtil jwtUtil,
-                        UserMapper userMapper) {
+                        UserMapper userMapper,
+                        ApplicationEventPublisher events) {
                 this.userRepository = userRepository;
                 this.roleRepository = roleRepository;
                 this.passwordEncoder = passwordEncoder;
                 this.authenticationManager = authenticationManager;
                 this.jwtUtil = jwtUtil;
                 this.userMapper = userMapper;
+                this.events = events;
+        }
+
+        /**
+         * Starts a session for a new anonymous shopper and returns its signed guest token.
+         * The anonymousId inside the token identifies the guest; GuestSessionStarted listeners
+         * (the guest cart) run in this transaction, before the token is returned.
+         */
+        @Transactional
+        public String startGuestSession() {
+                String anonymousId = UUID.randomUUID().toString();
+                events.publishEvent(new GuestSessionStarted(anonymousId));
+                return jwtUtil.generateAnonymousToken(anonymousId);
         }
 
         /**

@@ -102,6 +102,8 @@ graph LR
 
 The code is organized by business module, one package each: `catalog`, `identity`, `cart`, `pricing`, `ordering`, plus `shared` (clock, error handling, request id, scheduling). What other modules may use sits in the module's root package; everything else is in its `internal` sub-package.
 
+The boundaries are verified by [Spring Modulith](https://spring.io/projects/spring-modulith) in `ModularityTests`: a module that reaches into another module's `internal` package, or a dependency cycle between modules, fails the build. Allowed dependencies today: `ordering` → `cart`, `pricing`, `identity`; `pricing` → `cart`, `identity`; `cart` → `catalog`, `identity`; everything → `shared`. Where a dependency would point the other way, the module publishes an event instead (identity announces a new guest, cart creates its cart). The test also writes the module diagrams to `target/spring-modulith-docs`.
+
 **Checkout in one transaction:**
 
 1. Load the caller's cart with items and products (one query).
@@ -124,6 +126,7 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 | Security | Spring Security, JWT (jjwt, HMAC) |
 | Persistence | Spring Data JPA, Hibernate, H2 (PostgreSQL planned) |
 | Scheduling | `@Scheduled` with ShedLock (JDBC provider) |
+| Modularity | Spring Modulith (verified module boundaries) |
 | Cross-cutting | Spring AOP (pricing audit), RFC 7807 problem details |
 | Tests | JUnit 5, MockMvc, AssertJ, Mockito, Hibernate statistics |
 
@@ -198,6 +201,7 @@ Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 4
 | `CheckoutFlowTests` | Login, guest cart, server-side pricing (a tampered body is ignored), coupons, merge |
 | `CheckoutFlowTests.lastCouponUse...` | 20 virtual threads race for the last coupon use: exactly one wins |
 | `OrderTests` | A checkout records an order whose prices do not change with the catalog; the same key twice, or ten times concurrently, gives one order and one coupon use; orders are visible only to their owner |
+| `ModularityTests` | No module uses another module's internals, no dependency cycles; writes the module diagrams |
 | `CartConcurrencyTests` | 16 concurrent first requests of a new user: all 200, one cart |
 | `CartQueryCountTests` | Reading a cart costs the same number of SQL statements with 1 or 4 products |
 | `SchedulerJobsTests` | Both jobs touch only what they must; a second trigger inside the lock window is skipped |

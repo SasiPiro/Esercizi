@@ -1,10 +1,15 @@
 package com.ecommerce.monolith.catalog;
 
-import static com.ecommerce.monolith.shared.AppConstants.ERROR_PRODUCT_NOT_FOUND_FOR_CODE;
+import com.ecommerce.monolith.shared.BusinessException;
+import org.springframework.http.HttpStatus;
 
-public class ProductNotFoundException extends RuntimeException {
+import static com.ecommerce.monolith.shared.AppConstants.ERROR_PRODUCT_NOT_FOUND;
+import static com.ecommerce.monolith.shared.AppConstants.ERROR_PRODUCT_NOT_FOUND_FOR_CODE;
+import static com.ecommerce.monolith.shared.AppConstants.TYPE_PRODUCT_NOT_FOUND;
+
+public class ProductNotFoundException extends BusinessException {
     public ProductNotFoundException(String message) {
-        super(message);
+        super(HttpStatus.NOT_FOUND, ERROR_PRODUCT_NOT_FOUND, TYPE_PRODUCT_NOT_FOUND, message);
     }
     public static ProductNotFoundException forCode(String code){
         return new ProductNotFoundException(ERROR_PRODUCT_NOT_FOUND_FOR_CODE + code);

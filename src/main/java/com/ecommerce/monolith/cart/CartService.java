@@ -16,6 +16,7 @@ import com.ecommerce.monolith.shared.MissingResourceException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
@@ -94,6 +95,19 @@ public class CartService {
             }
             ownership.setCart(cartRepository.save(fresh));
         });
+    }
+
+    /**
+     * Atomically moves an open cart to CHECKOUT, inside the caller's checkout transaction.
+     *
+     * @throws CartCheckoutConflictException if the cart is already being checked out or
+     *         purchased (e.g. a double-submitted checkout)
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void claimForCheckout(Cart cart) {
+        if (cartRepository.claimForCheckout(cart.getId()) == 0) {
+            throw new CartCheckoutConflictException("Cart is already being checked out");
+        }
     }
 
     @Transactional
