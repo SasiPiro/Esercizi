@@ -68,7 +68,7 @@ Both repositories implement an e-commerce backend on purpose. Seeing the same do
 | Communication | In-process method calls and domain events | HTTP through the gateway, asynchronous events on Kafka |
 | Authentication | The app issues and verifies its own JWT (HMAC) | Keycloak issues tokens (RS256); services only verify with a public key |
 | Failure handling | A failure is an exception in one process | Timeouts, retries on reads, circuit breakers, fallbacks |
-| Observability | Request id in every log line of one process | Correlation id across services, metrics per service, central logs |
+| Observability | Request id in every log line of one process; Prometheus metrics of one process | Correlation id across services, metrics per service, central logs |
 | Deployment | One artifact, one database | One image and one database per service, Kubernetes |
 
 **When a monolith is the right choice, as practiced here:** a single team, a domain whose rules must change together (a promotion touches cart, pricing and checkout at once), and a need for strong consistency. You get one transaction, one deployment, one place to debug, and refactoring across modules is a compiler-checked change instead of a coordinated API migration. **The price:** everything scales and deploys together, and without discipline the code turns into a "big ball of mud". The [module boundaries](#architecture), verified by tests with Spring Modulith, address the second point.
@@ -132,6 +132,7 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 | Persistence | Spring Data JPA, Hibernate, PostgreSQL |
 | Scheduling | `@Scheduled` with ShedLock (JDBC provider) |
 | Modularity | Spring Modulith (verified module boundaries, domain events with a JPA publication registry) |
+| Observability | Spring Boot Actuator, Micrometer, Prometheus |
 | Cross-cutting | Spring AOP (pricing audit), RFC 7807 problem details |
 | Tests | JUnit 5, MockMvc, AssertJ, Mockito, Hibernate statistics, Testcontainers (PostgreSQL) |
 
@@ -192,6 +193,10 @@ curl -s localhost:8080/api/v1/orders -H "Authorization: Bearer $TOKEN"
 | POST | `/api/v1/checkout?couponCode=` + header `Idempotency-Key` | user or guest | Confirm the purchase: 201 with the order and its `Location`; 200 with the same order when the key is replayed |
 | GET | `/api/v1/orders` | user or guest | The caller's orders, newest first |
 | GET | `/api/v1/orders/{id}` | user or guest | One of the caller's orders (404 for anyone else's) |
+| GET | `/actuator/health` | public | Liveness and readiness for load balancers and orchestrators |
+| GET | `/actuator/prometheus` | public | Metrics in Prometheus format (restrict at network level in production) |
+
+**Metrics.** Besides the standard JVM, connection pool and HTTP metrics (with histogram buckets, so p95/p99 latency is computed by Prometheus across instances), two business metrics are recorded only when the checkout transaction commits: `shop_coupon_redeemed_total{code}` (redemptions per coupon code) and `shop_checkout_amount_count/_sum/_max{outcome}` (orders and amounts paid). Tags are low-cardinality on purpose: never a user id or an order id.
 
 Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 400 validation, 401 authentication, 403 authorization, 404 not found (also for another shopper's order), 409 conflicts (duplicate username, concurrent checkout, non-cumulative coupon, idempotency key used by another shopper), 410 expired coupon. Every response carries an `X-Request-Id` header, also printed on every log line of that request.
 
@@ -217,6 +222,7 @@ Docker must be running: every Spring test context gets its own PostgreSQL contai
 | `SchedulerJobsTests` | Both jobs touch only what they must; a second trigger inside the lock window is skipped |
 | `JwtSecurityTests` | Weak or previously public secrets are rejected; a forged token gets 401 |
 | `CorsTests`, `ProductionDefaultsTests` | Dev conveniences are off without the `dev` profile |
+| `MetricsTests` | `/actuator/prometheus` exposes HTTP histograms and the business metrics; a redemption that rolls back is not counted |
 | `LoggingTests`, `RequestIdTests` | Log format, levels, no duplicates, no secrets, request id propagation |
 
 ---

@@ -2,7 +2,9 @@ package com.ecommerce.monolith.pricing;
 
 import com.ecommerce.monolith.pricing.Coupon.CouponStatus;
 import com.ecommerce.monolith.pricing.internal.CouponRepository;
+import com.ecommerce.monolith.shared.AfterCommit;
 import com.ecommerce.monolith.shared.TimeService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,12 +22,14 @@ public class CouponService {
     private final CouponRepository couponRepository;
     private final TimeService timeService;
     private final EntityManager entityManager;
+    private final MeterRegistry meterRegistry;
 
     public CouponService(CouponRepository couponRepository, TimeService timeService,
-                         EntityManager entityManager) {
+                         EntityManager entityManager, MeterRegistry meterRegistry) {
         this.couponRepository = couponRepository;
         this.timeService = timeService;
         this.entityManager = entityManager;
+        this.meterRegistry = meterRegistry;
     }
 
     /**
@@ -82,6 +86,8 @@ public class CouponService {
 
         log.info("[COUPON_REDEEMED] code={} usage={} limit={}",
                 coupon.getCode(), coupon.getCurrentUsage(), coupon.getUsageLimit());
+        // Tagged by code: coupon codes are few (low cardinality). Counted only if the checkout commits.
+        AfterCommit.run(() -> meterRegistry.counter("shop.coupon.redeemed", "code", couponCode).increment());
         return coupon;
     }
 }

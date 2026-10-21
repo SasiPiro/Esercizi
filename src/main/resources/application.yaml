@@ -46,6 +46,18 @@ app:
     # https://shop.example.com. Empty = no cross-origin browser access.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    distribution:
+      # Buckets for http_server_requests_seconds: latency percentiles (p95, p99) are
+      # computed by Prometheus across instances, not by each instance
+      percentiles-histogram:
+        http.server.requests: true
+
 logging:
   pattern:
     # Request id (RequestIdFilter) in every line: "[-]" for lines outside an HTTP request,

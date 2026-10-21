@@ -10,8 +10,10 @@ import com.ecommerce.monolith.pricing.Coupon;
 import com.ecommerce.monolith.pricing.CouponService;
 import com.ecommerce.monolith.pricing.PricingEngine;
 import com.ecommerce.monolith.pricing.TrackPromotion;
+import com.ecommerce.monolith.shared.AfterCommit;
 import com.ecommerce.monolith.shared.AppConstants;
 import com.ecommerce.monolith.shared.TimeService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.event.Level;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -42,10 +44,12 @@ public class PaymentService {
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
     private final ApplicationEventPublisher events;
+    private final MeterRegistry meterRegistry;
 
     public PaymentService(CartService cartService, CouponService couponService,
             PricingEngine pricingEngine, TimeService timeService,
-            OrderRepository orderRepository, OrderMapper orderMapper, ApplicationEventPublisher events) {
+            OrderRepository orderRepository, OrderMapper orderMapper, ApplicationEventPublisher events,
+            MeterRegistry meterRegistry) {
         this.cartService = cartService;
         this.couponService = couponService;
         this.pricingEngine = pricingEngine;
@@ -53,6 +57,7 @@ public class PaymentService {
         this.orderRepository = orderRepository;
         this.orderMapper = orderMapper;
         this.events = events;
+        this.meterRegistry = meterRegistry;
     }
 
     @TrackPromotion(level = Level.DEBUG) // previews are frequent: not a business event
@@ -94,6 +99,10 @@ public class PaymentService {
         Order order = recordOrder(idempotencyKey, current, result, now);
         // Stored in the publication registry in this transaction; listeners run after commit
         events.publishEvent(new OrderPlaced(order.getId(), order.getUserId(), order.getFinalPrice()));
+        // Count, sum and max of the amounts paid; never tagged by user or order (unbounded
+        // cardinality). Not named "...total": Prometheus reserves that suffix for counters.
+        AfterCommit.run(() -> meterRegistry.summary("shop.checkout.amount", "outcome", "success")
+                .record(order.getFinalPrice().doubleValue()));
 
         cart.setCartStatus(Cart.CartStatus.PURCHASED);
         cartService.replacePurchasedCart(cart);

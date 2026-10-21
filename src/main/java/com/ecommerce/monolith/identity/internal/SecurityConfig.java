@@ -30,6 +30,11 @@ public class SecurityConfig {
             "/api/v1/auth/login",
             "/api/v1/auth/register",
             "/api/v1/auth/guest",
+            // Health for load balancers and orchestrators, metrics for the Prometheus scraper.
+            // Reachable without a token: restrict them at network level (e.g. a separate
+            // management port or an ingress rule) in production.
+            "/actuator/health/**",
+            "/actuator/prometheus",
             "/v3/api-docs/**",
             "/swagger-ui/**"
     };
