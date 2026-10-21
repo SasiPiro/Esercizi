@@ -3,6 +3,7 @@ package com.ecommerce.monolith;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -16,15 +17,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Only the secret is provided, as the JWT_SECRET environment variable would be.
  */
 @SpringBootTest(properties = "jwt.secret=prod-like-test-secret-0123456789-abcdefghijklmnop")
+@Import(TestcontainersConfiguration.class)
 @AutoConfigureMockMvc
 class ProductionDefaultsTests {
 
     @Autowired MockMvc mvc;
-
-    @Test
-    void h2ConsoleIsNotExposed() throws Exception {
-        mvc.perform(get("/h2-console/")).andExpect(status().isUnauthorized());
-    }
 
     @Test
     void noCrossOriginAccessByDefault() throws Exception {

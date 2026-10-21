@@ -1,13 +1,9 @@
 spring:
   application:
     name: ecommerce-monolith
-  datasource:
-    url: jdbc:h2:mem:testdb
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
+  # PostgreSQL. No default on purpose: set SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME
+  # and SPRING_DATASOURCE_PASSWORD (the dev profile points to a local database).
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
       ddl-auto: none
     show-sql: false
@@ -17,13 +13,6 @@ spring:
     properties:
       # Safety net for lazy associations that are not fetched explicitly
       hibernate.default_batch_fetch_size: 50
-  sql:
-    init:
-      mode: always
-  h2:
-    console:
-      enabled: false   # enabled only in the dev profile
-      path: /h2-console
   threads:
     virtual:
       enabled: true

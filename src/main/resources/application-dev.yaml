@@ -7,9 +7,17 @@ jwt:
   secret: dev-only-YIBpwCkIRy79z-W38ee4DrNGol63pyqwrG97y4U6d88Zy4tetm34Aw
 
 spring:
-  h2:
-    console:
-      enabled: true
+  # Local PostgreSQL (e.g. docker run -p 5432:5432 -e POSTGRES_DB=ecommerce
+  # -e POSTGRES_USER=ecommerce -e POSTGRES_PASSWORD=ecommerce postgres:16-alpine).
+  # Tests and spring-boot:test-run use a Testcontainers database instead.
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ecommerce
+    username: ecommerce
+    password: ecommerce
+  # Recreates the schema and the sample data at every start: dev only
+  sql:
+    init:
+      mode: always
 
 app:
   cors:

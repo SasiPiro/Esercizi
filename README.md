@@ -87,7 +87,7 @@ graph LR
         JOBS["Scheduled jobs<br/>ShedLock"]
     end
 
-    DB[("Database<br/>H2 today, PostgreSQL planned")]
+    DB[("PostgreSQL")]
 
     Client --> WEB
     WEB --> CART
@@ -127,23 +127,25 @@ If any step fails, the whole transaction rolls back, coupon use included. In the
 | Language | Java 21 (virtual threads enabled) |
 | Framework | Spring Boot 4 |
 | Security | Spring Security, JWT (jjwt, HMAC) |
-| Persistence | Spring Data JPA, Hibernate, H2 (PostgreSQL planned) |
+| Persistence | Spring Data JPA, Hibernate, PostgreSQL |
 | Scheduling | `@Scheduled` with ShedLock (JDBC provider) |
 | Modularity | Spring Modulith (verified module boundaries, domain events with a JPA publication registry) |
 | Cross-cutting | Spring AOP (pricing audit), RFC 7807 problem details |
-| Tests | JUnit 5, MockMvc, AssertJ, Mockito, Hibernate statistics |
+| Tests | JUnit 5, MockMvc, AssertJ, Mockito, Hibernate statistics, Testcontainers (PostgreSQL) |
 
 ---
 
 ## Running locally
 
-**Prerequisites:** JDK 21.
+**Prerequisites:** JDK 21 and Docker.
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+./mvnw spring-boot:test-run -Dspring-boot.run.profiles=dev
 ```
 
-The `dev` profile provides a local JWT secret, the H2 console (`http://localhost:8080/h2-console`, JDBC URL `jdbc:h2:mem:testdb`) and CORS for `localhost:3000` and `localhost:5173`. **Without a profile the application refuses to start** unless `JWT_SECRET` is set: this is intentional.
+`spring-boot:test-run` starts `TestEcommerceMonolithApplication`, which runs the application against a PostgreSQL container started by Testcontainers: there is no database to install. To use a PostgreSQL you run yourself, `./mvnw spring-boot:run -Dspring-boot.run.profiles=dev` connects to `localhost:5432`, database, user and password `ecommerce`.
+
+The `dev` profile provides a local JWT secret, the local database settings with the sample data, and CORS for `localhost:3000` and `localhost:5173`. **Without a profile the application refuses to start** unless `JWT_SECRET` and the database settings are provided: this is intentional.
 
 Seed users (local only): `JAY` / `jay-password` (VIP, admin) and `admin` / `admin-password` (VIP, admin). Products `P001`-`P004`, coupons `SAVE10` (one use left) and `FLASH50`.
 
@@ -199,6 +201,8 @@ Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 4
 ./mvnw test
 ```
 
+Docker must be running: every Spring test context gets its own PostgreSQL container, so concurrency tests prove what the real database does (row locks, conditional updates, unique constraints), not what an in-memory substitute does.
+
 | Test class | What it proves |
 |---|---|
 | `CheckoutFlowTests` | Login, guest cart, server-side pricing (a tampered body is ignored), coupons, merge |
@@ -222,6 +226,8 @@ Errors are [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) problem details: 4
 | `JWT_SECRET` | none (required) | HMAC signing key, at least 32 bytes |
 | `JWT_EXPIRATION` | `86400000` | Token lifetime in milliseconds |
 | `CORS_ALLOWED_ORIGINS` | empty | Comma-separated browser origins allowed to call the API |
+| `SPRING_DATASOURCE_URL` | none (required) | PostgreSQL JDBC URL, e.g. `jdbc:postgresql://db:5432/ecommerce` |
+| `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | none (required) | Database credentials |
 | `SPRING_PROFILES_ACTIVE` | none | `dev` for local development only |
 | `LOGGING_STRUCTURED_FORMAT_CONSOLE` | unset | `ecs` or `logstash` for JSON log lines |
 

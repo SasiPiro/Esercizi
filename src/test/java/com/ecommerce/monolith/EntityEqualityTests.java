@@ -8,6 +8,7 @@ import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.HashSet;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and contains() depend on how the object happened to be loaded.
  */
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 @ActiveProfiles("dev")
 class EntityEqualityTests {
 
