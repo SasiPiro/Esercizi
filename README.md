@@ -20,7 +20,7 @@ It is one half of a pair. The same domain is also implemented as a distributed s
 - [API overview](#api-overview)
 - [Testing](#testing)
 - [Configuration](#configuration)
-- [Known limits](#known-limits)
+- [Production notes](#production-notes)
 
 ---
 
@@ -349,15 +349,13 @@ Promotion percentages and the seasonal windows (days of the year, repeated every
 
 ---
 
-## Known limits
+## Production notes
 
-Deliberate trade-offs, or work not done yet:
+What I would change before running this in production, and why it is not done in a demo:
 
-- **`/actuator/prometheus` and `/actuator/health` are public**, for the scraper and the orchestrator. In production restrict them at network level (a separate management port or an ingress rule).
-- **Failed notifications are not retried automatically.** A failed `OrderPlaced` delivery stays incomplete in `event_publication`; it is resubmitted through `IncompleteEventPublications`, which nothing schedules yet.
-- **The product cache is per instance** and holds detached `Product` entities shared between threads. That is fine while nothing modifies a looked-up product (no code does); a cache of read-only DTOs would be safer once products become editable.
-- **The Black Friday window moves every year** and must be updated in `promotions.black-friday`.
-- **CI builds the image but does not publish it**: pushing to a registry needs credentials and a release policy.
+- **Operational endpoints are public.** `/actuator/health` and `/actuator/prometheus` need no token, so the orchestrator and the Prometheus scraper can reach them; metrics reveal traffic and business volumes. *In production:* serve them on a separate management port (`management.server.port`) that only the cluster network can reach, or restrict them in the ingress.
+- **Failed notifications are not retried automatically.** A failed `OrderPlaced` delivery stays incomplete in `event_publication`: nothing is lost, but nothing resubmits it either. *In production:* resubmit incomplete publications on a schedule with `IncompleteEventPublications.resubmitIncompletePublicationsOlderThan(...)` (under a ShedLock lock, like the other jobs), or at least on startup with `spring.modulith.events.republish-outstanding-events-on-restart=true`, and alert on publications that stay incomplete.
+- **The product cache is per instance and holds entities.** With several instances, a product update reaches the others only after 5 minutes, and the cached values are detached `Product` entities shared between threads, which is safe only while no code modifies them. *In production, once products become editable:* cache immutable DTOs instead of entities, and evict across instances with an event, or move to a shared cache (Redis) if the stale window is not acceptable.
 
 ---
 
